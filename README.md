@@ -51,9 +51,9 @@ Or open-ended:
 
 The skill will produce a full plan structured as above. If your problem is underspecified, the skill will surface 2–3 targeted clarifications before drafting the plan.
 
-## Example output
+## Example outputs
 
-Given the prompt above (free-delivery-to-non-DashPass), the skill produces an end-to-end plan covering:
+**Brief example.** Given the prompt above (free-delivery-to-non-DashPass), the skill produces an end-to-end plan covering:
 - Customer-level randomization stratified by recent order frequency
 - CUPED with prior-30-day orders covariate (~50% variance reduction)
 - Combined OEC = α·Δorders − β·Δsubsidy, with pre-committed weights
@@ -62,7 +62,16 @@ Given the prompt above (free-delivery-to-non-DashPass), the skill produces an en
 - 2-week minimum duration; geo-randomized pilot in 5 markets first; 5% permanent holdback for long-term LTV measurement
 - Decision rubric pre-committed: launch iff OEC ≥ MDE AND DashPass renewal ≥ baseline − 0.5pp
 
-See `reference/ab-testing-playbook.md` §13 for the worked Doordash example this is based on.
+See `reference/ab-testing-playbook.md` §13 for the Doordash example this is based on.
+
+**Full worked example** (with iteration) — [`examples/spotify-shuffle-removal.md`](./examples/spotify-shuffle-removal.md).
+
+The Spotify example shows **both passes** of a staff-DS conversation:
+
+1. **First pass** — the structured 10-component plan the skill produces from the problem statement alone (the "defensible draft").
+2. **Depth pass** — the senior iteration: triggering analysis (20× efficiency gain), multi-covariate CUPED stacking, Spotify platform-layer reasoning, low-traffic alternatives, anytime-valid sequential testing with three simultaneous early-stop conditions, and segment heterogeneity. This is what the skill produces when you push it with follow-up questions.
+
+Read this example end-to-end to see the iterative pattern that distinguishes a junior plan ("ship the first pass") from a staff plan ("first pass + the six things a senior reviewer would push on"). The file closes with four other realistic problems (LinkedIn Connect→Follow, Stripe SCA rollout, Uber Eats surge pricing, Anthropic LLM system prompt) — each exposes a different dimension the framework needs to handle.
 
 ## What's inside
 
@@ -71,12 +80,14 @@ ab-testing-planner-skill/
 ├── README.md                           ← this file
 ├── LICENSE                             ← MIT
 ├── skill/
-│   └── SKILL.md                        ← the slash command definition + planning framework
-└── reference/
-    └── ab-testing-playbook.md          ← the staff-level playbook the skill draws from
+│   └── SKILL.md                        ← the slash command definition + 10-component planning framework
+├── reference/
+│   └── ab-testing-playbook.md          ← the 1,400-line staff-level playbook the skill draws from
+└── examples/
+    └── spotify-shuffle-removal.md      ← worked example showing first-pass + depth-pass iteration
 ```
 
-The skill is intentionally lightweight — most of the value is in the planning framework encoded in `SKILL.md` plus the reference depth in the playbook. The skill reads the playbook at invocation time and applies the framework.
+The skill is intentionally lightweight — most of the value is in the planning framework encoded in `SKILL.md` plus the reference depth in the playbook. The skill reads the playbook at invocation time and applies the framework. The `examples/` folder shows what a complete senior-DS conversation with the skill looks like.
 
 ## Provenance
 
