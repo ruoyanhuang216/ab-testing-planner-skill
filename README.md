@@ -64,14 +64,20 @@ The skill will produce a full plan structured as above. If your problem is under
 
 See `reference/ab-testing-playbook.md` §13 for the Doordash example this is based on.
 
-**Full worked example** (with iteration) — [`examples/spotify-shuffle-removal.md`](./examples/spotify-shuffle-removal.md).
+**Full worked examples** (with iteration) — three examples, each exercising a different staff-level dimension:
 
-The Spotify example shows **both passes** of a staff-DS conversation:
+| Example | Dimension stressed |
+|---|---|
+| [`examples/spotify-shuffle-removal.md`](./examples/spotify-shuffle-removal.md) | User-level A/B with triggering + CUPED stacking + anytime-valid sequential. Variance reduction is the dominant move (20× efficiency gain). |
+| [`examples/uber-eats-surge-pricing.md`](./examples/uber-eats-surge-pricing.md) | **Two-sided market** with hard SUTVA violation — switchback at market × 2-hour-slot granularity + synthetic-DiD geo overlay. Carryover is the dominant risk. |
+| [`examples/anthropic-claude-system-prompt.md`](./examples/anthropic-claude-system-prompt.md) | **LLM evaluation** — three-modality combination (behavioral A/B + offline LLM-judge + human-rater pairwise). No clean CUPED for response quality (open frontier per §16.5). |
 
-1. **First pass** — the structured 10-component plan the skill produces from the problem statement alone (the "defensible draft").
-2. **Depth pass** — the senior iteration: triggering analysis (20× efficiency gain), multi-covariate CUPED stacking, Spotify platform-layer reasoning, low-traffic alternatives, anytime-valid sequential testing with three simultaneous early-stop conditions, and segment heterogeneity. This is what the skill produces when you push it with follow-up questions.
+Each example shows **both passes** of a staff-DS conversation:
 
-Read this example end-to-end to see the iterative pattern that distinguishes a junior plan ("ship the first pass") from a staff plan ("first pass + the six things a senior reviewer would push on"). The file closes with four other realistic problems (LinkedIn Connect→Follow, Stripe SCA rollout, Uber Eats surge pricing, Anthropic LLM system prompt) — each exposes a different dimension the framework needs to handle.
+1. **First pass** — the structured 10-component plan the skill produces from the problem statement alone (the "defensible draft"). Captured verbatim from an actual `/ab-test-plan` invocation.
+2. **Depth pass** — the senior iteration that pushes on what the first pass surfaced but didn't fully flesh out. This is what the skill produces when you ask follow-up questions.
+
+Read these end-to-end to see the iterative pattern that distinguishes a junior plan ("ship the first pass") from a staff plan ("first pass + the things a senior reviewer would push on"). Each example closes with a list of *other* realistic problems the framework would handle — each exposes a different staff-level dimension.
 
 ## What's inside
 
