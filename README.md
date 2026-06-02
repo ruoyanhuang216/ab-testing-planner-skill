@@ -64,13 +64,17 @@ The skill will produce a full plan structured as above. If your problem is under
 
 See `reference/ab-testing-playbook.md` §13 for the Doordash example this is based on.
 
-**Full worked examples** (with iteration) — three examples, each exercising a different staff-level dimension:
+**Full worked examples** (with iteration) — seven examples, each exercising a different staff-level dimension:
 
 | Example | Dimension stressed |
 |---|---|
 | [`examples/spotify-shuffle-removal.md`](./examples/spotify-shuffle-removal.md) | User-level A/B with triggering + CUPED stacking + anytime-valid sequential. Variance reduction is the dominant move (20× efficiency gain). |
 | [`examples/uber-eats-surge-pricing.md`](./examples/uber-eats-surge-pricing.md) | **Two-sided market** with hard SUTVA violation — switchback at market × 2-hour-slot granularity + synthetic-DiD geo overlay. Carryover is the dominant risk. |
 | [`examples/anthropic-claude-system-prompt.md`](./examples/anthropic-claude-system-prompt.md) | **LLM evaluation** — three-modality combination (behavioral A/B + offline LLM-judge + human-rater pairwise). No clean CUPED for response quality (open frontier per §16.5). |
+| [`examples/news-headline-mab.md`](./examples/news-headline-mab.md) | **MAB / Thompson Sampling** — the skill correctly refuses A/B and recommends MAB. The canonical Yahoo / Reddit headline-selection case with clickbait drift as the dominant Goodhart risk. |
+| [`examples/linkedin-connect-to-follow.md`](./examples/linkedin-connect-to-follow.md) | **Network effects** — cluster randomization at Louvain community level with ego-cluster spillover bound. Multi-sided platform with per-tier ship decisions. |
+| [`examples/stripe-sca-3ds-rollout.md`](./examples/stripe-sca-3ds-rollout.md) | **Regulatory + sparse outcomes** — PSD2 SCA mandate, fraud rate underpowered at meaningful MDE, DiD overlay on bank ACS rollout schedule, per-country ship decisions. |
+| [`examples/substack-recommendation-reorder.md`](./examples/substack-recommendation-reorder.md) | **Ranker change with creator-side spillover** — §15.3 two-stage interleaving + A/B; long-tail collapse as the dominant CF-ranker risk; writer-as-customer treatment. |
 
 Each example shows **both passes** of a staff-DS conversation:
 
