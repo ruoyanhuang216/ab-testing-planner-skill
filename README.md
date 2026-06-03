@@ -1,5 +1,8 @@
 # A/B Testing Plan Generator — A Claude Code Skill
 
+[![Claude Code Skill](https://img.shields.io/badge/Claude%20Code-Skill-d97757)](https://docs.claude.com/en/docs/agents/skills)
+[![Reference repo: staff-ds-interview-prep](https://img.shields.io/badge/reference-staff--ds--interview--prep-24292e?logo=github)](https://github.com/ruoyanhuang216/staff-ds-interview-prep)
+
 Give it a product problem; it produces a staff-DS-grade A/B testing plan.
 
 This is a Claude Code [Skill](https://docs.claude.com/en/docs/agents/skills) that packages a 1,400-line staff-level A/B testing playbook (drawn from Netflix XP, LinkedIn T-REX, Microsoft ExP, the Kohavi-Tang-Xu *Trustworthy Online Controlled Experiments* book, and 2020s frontier research on anytime-valid sequential testing, interleaving, CUPED, and CATE) into a single slash command. You point it at a product problem, it walks the full plan.
