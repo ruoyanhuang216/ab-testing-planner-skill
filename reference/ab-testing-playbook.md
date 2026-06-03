@@ -13,7 +13,7 @@ Most A/B testing interview answers stop at "split users 50/50, run a t-test, loo
 
 This guide walks each of these in the order an interviewer probes them. Numbered math, decision tables, worked examples, and a Doordash-flavored end-to-end case at the close.
 
-> **Companion notes.** Quasi-experimental detail (DiD/RDD/IV/synthetic control/DML, sensitivity analysis, uplift) lives in [`ml-interview-prep/algorithms/notes/causal_inference.md`](../../../repos/ml-interview-prep/algorithms/notes/causal_inference.md). Time-series considerations (seasonality, novelty fade, holdback dynamics) overlap with [`time_series_forecasting.md`](../../../repos/ml-interview-prep/algorithms/notes/time_series_forecasting.md). This guide cross-links rather than duplicates.
+> **Companion notes.** Quasi-experimental detail (DiD/RDD/IV/synthetic control/DML, sensitivity analysis, uplift) lives in [`ml-interview-prep/algorithms/notes/causal_inference.md`](../../repos/ml-interview-prep/algorithms/notes/causal_inference.md). Time-series considerations (seasonality, novelty fade, holdback dynamics) overlap with [`time_series_forecasting.md`](../../repos/ml-interview-prep/algorithms/notes/time_series_forecasting.md). This guide cross-links rather than duplicates.
 
 ---
 
@@ -329,7 +329,7 @@ SUTVA (Stable Unit Treatment Value Assumption) demands that one unit's treatment
 For Doordash's market-level changes (new fee structure, expanded radius), the supply (restaurants, dashers) responds. Two valid designs:
 
 1. **Switchback by market × time slot.** Run treatment for 2-hour windows alternating with control across markets. Effective when carryover decays within the slot duration. Risks: dinner-rush bias, dashers learning the schedule.
-2. **Geo experiments (DMA-level).** Treat e.g. 30 cities, hold 30 as control, match on pre-period demand. Use synthetic-control style estimators (see [causal_inference.md](../../../repos/ml-interview-prep/algorithms/notes/causal_inference.md) §Synthetic DiD). Few units → low power → MDE measured in single-digit percentage points typically.
+2. **Geo experiments (DMA-level).** Treat e.g. 30 cities, hold 30 as control, match on pre-period demand. Use synthetic-control style estimators (see [causal_inference.md](../../repos/ml-interview-prep/algorithms/notes/causal_inference.md) §Synthetic DiD). Few units → low power → MDE measured in single-digit percentage points typically.
 
 **Sanity check before declaring a two-sided design.**
 1. *How big is the spillover?* If small (e.g. 1% of treated drivers' deliveries displace control orders), unit-level randomization with a small interference adjustment can still be valid.
@@ -429,7 +429,7 @@ Diagnoses:
 
 Mitigations:
 - Run longer (4–8 weeks).
-- **Holdback experiment:** after launching, keep 1–5% of users on control indefinitely. Measure long-term effect on that holdback. Cross-reference [time_series_forecasting.md](../../../repos/ml-interview-prep/algorithms/notes/time_series_forecasting.md) §Walk-forward retraining cadence — same discipline applies.
+- **Holdback experiment:** after launching, keep 1–5% of users on control indefinitely. Measure long-term effect on that holdback. Cross-reference [time_series_forecasting.md](../../repos/ml-interview-prep/algorithms/notes/time_series_forecasting.md) §Walk-forward retraining cadence — same discipline applies.
 - **Reverse experiment:** post-launch, switch a fresh sample of users *back* to control. Did they degrade? You've measured the steady-state effect.
 
 ### 8.4 Simpson's paradox
@@ -451,7 +451,7 @@ A two-by-two of *statistical* significance vs *practical* significance:
 
 ## 9. When you can't randomize — quasi-experiments
 
-When A/B testing is impossible or impractical, the rigorous fallback is quasi-experimental causal inference. Brief map; deep treatment lives in [causal_inference.md](../../../repos/ml-interview-prep/algorithms/notes/causal_inference.md).
+When A/B testing is impossible or impractical, the rigorous fallback is quasi-experimental causal inference. Brief map; deep treatment lives in [causal_inference.md](../../repos/ml-interview-prep/algorithms/notes/causal_inference.md).
 
 | Method | When to use | Identifying assumption |
 |---|---|---|
@@ -627,7 +627,7 @@ A/B test is the right tool.
 
 - This is a one-sided demand change; supply-side spillover is small but non-zero (more demand pulls dashers).
 - Run in a few medium-sized markets first; cross-validate with a switchback design before national rollout.
-- Cross-reference with [causal_inference.md](../../../repos/ml-interview-prep/algorithms/notes/causal_inference.md) for synthetic-DiD on the market-level rollout.
+- Cross-reference with [causal_inference.md](../../repos/ml-interview-prep/algorithms/notes/causal_inference.md) for synthetic-DiD on the market-level rollout.
 
 ### Step 5 — Analysis
 
@@ -1158,7 +1158,7 @@ These numbers are the floor for "platform-scale" — if a candidate says "we'd r
 - [It's All A/Bout Testing: The Netflix Experimentation Platform (Netflix Tech Blog)](https://netflixtechblog.com/its-all-a-bout-testing-the-netflix-experimentation-platform-4e1ca458c15) — the XP overview.
 - [Testing for arbitrary interference on experimentation platforms (Saint-Jacques et al. — LinkedIn, 2017)](https://arxiv.org/abs/1704.01190) — platform-side interaction detection.
 
-> **Case-walkthrough companion.** See [`examples/experimentation-platform-design.md`](../../examples/methods/experimentation-platform-design.md) for the step-by-step walkthrough of *"Design an experimentation platform for LinkedIn"* using this material — the 6-step framework for the interview answer.
+> **Case-walkthrough companion.** See [`ab-testing/examples/experimentation-platform-design.md`](https://github.com/ruoyanhuang216/staff-ds-interview-prep/blob/main/ab-testing/examples/experimentation-platform-design.md) for the step-by-step walkthrough of *"Design an experimentation platform for LinkedIn"* using this material — the 6-step framework for the interview answer.
 
 ### 15.7 Further reading — Netflix references
 
@@ -1389,8 +1389,8 @@ The mapping back to existing sections, for quick reference:
 
 ## 18. Related notes
 
-- [`ml-interview-prep/algorithms/notes/causal_inference.md`](../../../repos/ml-interview-prep/algorithms/notes/causal_inference.md) — DiD / RDD / IV / synthetic control / DML / uplift / sensitivity analysis.
-- [`ml-interview-prep/algorithms/notes/time_series_forecasting.md`](../../../repos/ml-interview-prep/algorithms/notes/time_series_forecasting.md) — walk-forward validation, look-ahead bias, drift monitoring (parallels novelty/holdback discipline).
-- [`examples/experiment-design.md`](../../examples/methods/experiment-design.md) — the shorter case-walkthrough version of A/B design (use this for the interview answer; this file for the playbook depth).
-- [`examples/experimentation-platform-design.md`](../../examples/methods/experimentation-platform-design.md) — the LinkedIn "design a platform" system-design case walkthrough.
-- [`examples/metrics-diagnosis.md`](../../examples/product-questions/metrics-diagnosis.md) — what to do when a metric *moved* and you have to investigate, not run an experiment.
+- [`ml-interview-prep/algorithms/notes/causal_inference.md`](../../repos/ml-interview-prep/algorithms/notes/causal_inference.md) — DiD / RDD / IV / synthetic control / DML / uplift / sensitivity analysis.
+- [`ml-interview-prep/algorithms/notes/time_series_forecasting.md`](../../repos/ml-interview-prep/algorithms/notes/time_series_forecasting.md) — walk-forward validation, look-ahead bias, drift monitoring (parallels novelty/holdback discipline).
+- [`ab-testing/examples/experiment-design.md`](https://github.com/ruoyanhuang216/staff-ds-interview-prep/blob/main/ab-testing/examples/experiment-design.md) — the shorter case-walkthrough version of A/B design (use this for the interview answer; this file for the playbook depth).
+- [`ab-testing/examples/experimentation-platform-design.md`](https://github.com/ruoyanhuang216/staff-ds-interview-prep/blob/main/ab-testing/examples/experimentation-platform-design.md) — the LinkedIn "design a platform" system-design case walkthrough.
+- [`metric-diagnosis/examples/metrics-diagnosis.md`](https://github.com/ruoyanhuang216/staff-ds-interview-prep/blob/main/metric-diagnosis/examples/metrics-diagnosis.md) — what to do when a metric *moved* and you have to investigate, not run an experiment.

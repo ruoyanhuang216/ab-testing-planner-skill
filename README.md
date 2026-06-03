@@ -101,7 +101,7 @@ The skill is intentionally lightweight — most of the value is in the planning 
 
 ## Provenance
 
-The reference playbook (`reference/ab-testing-playbook.md`, ~1,400 lines, 18 sections) is drawn from the [`ds-case-interview-skill`](https://github.com/ruoyanhuang216/ds-case-interview-skill) repo's deeper case-interview material, focused down to A/B testing specifics. It cross-references companion topics (causal inference, product sense, metric diagnosis) that aren't part of this skill but are part of the broader interview-prep set.
+The reference playbook (`reference/ab-testing-playbook.md`, ~1,400 lines, 18 sections) is drawn from the [`staff-ds-interview-prep`](https://github.com/ruoyanhuang216/staff-ds-interview-prep) repo's deeper case-interview material, focused down to A/B testing specifics. It cross-references companion topics (causal inference, product sense, metric diagnosis) that aren't part of this skill but are part of the broader interview-prep set.
 
 Headline sources behind the playbook:
 - Kohavi, Tang, Xu — *Trustworthy Online Controlled Experiments* (Cambridge 2020)
