@@ -105,7 +105,7 @@ Reach for non-parametric tests when the parametric assumptions fail in a way the
 
 Estimator $\hat\Delta=\bar x_T-\bar x_C$. With equal per-arm size $n$ and variance $\sigma^2$:
 
-$$\operatorname{Var}(\hat\Delta)=\frac{\sigma^2}{n}+\frac{\sigma^2}{n}=\frac{2\sigma^2}{n},\qquad \text{SE}=\sqrt{\tfrac{2\sigma^2}{n}}$$
+$$\text{Var}(\hat\Delta)=\frac{\sigma^2}{n}+\frac{\sigma^2}{n}=\frac{2\sigma^2}{n},\qquad \text{SE}=\sqrt{\tfrac{2\sigma^2}{n}}$$
 
 Reject when $|\hat\Delta|/\text{SE} > z_{1-\alpha/2}$. Under the alternative $\hat\Delta\sim N(\delta,\text{SE}^2)$, so
 
@@ -134,11 +134,11 @@ Using a pooled $\bar p$ this collapses to $n\approx \dfrac{2(z_{...})^2\,\bar p(
 
 Pairing/adjustment doesn't change $\delta$; it shrinks $\sigma^2$. For a **paired** difference with correlation $\rho$ between pre and post:
 
-$$\operatorname{Var}(d)=\sigma_y^2+\sigma_x^2-2\rho\sigma_x\sigma_y=2\sigma^2(1-\rho)\quad(\text{equal }\sigma).$$
+$$\text{Var}(d)=\sigma_y^2+\sigma_x^2-2\rho\sigma_x\sigma_y=2\sigma^2(1-\rho)\quad(\text{equal }\sigma).$$
 
-So the required $n$ scales by $(1-\rho)$. **CUPED** goes one better: it subtracts the *optimal* multiple of the pre-period covariate, $Y^\text{cuped}=Y-\theta(X-\bar X)$ with $\theta=\operatorname{Cov}(Y,X)/\operatorname{Var}(X)$, giving
+So the required $n$ scales by $(1-\rho)$. **CUPED** goes one better: it subtracts the *optimal* multiple of the pre-period covariate, $Y^\text{cuped}=Y-\theta(X-\bar X)$ with $\theta=\text{Cov}(Y,X)/\text{Var}(X)$, giving
 
-$$\operatorname{Var}(Y^\text{cuped})=\sigma^2(1-\rho^2)\;\Rightarrow\; n^\text{cuped}=(1-\rho^2)\,n.$$
+$$\text{Var}(Y^\text{cuped})=\sigma^2(1-\rho^2)\;\Rightarrow\; n^\text{cuped}=(1-\rho^2)\,n.$$
 
 > **Highlight:** a pre-period covariate correlated $\rho=0.7$ with the outcome cuts variance by $1-0.49=51\%$ — equivalent to *doubling* traffic, for free. This is the single biggest power lever after MDE, and it's why CUPED is "the staff-level differentiator" (§5.4). Effective sample size $n_\text{eff}=n/(1-\rho^2)$.
 

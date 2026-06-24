@@ -37,8 +37,11 @@ cp "$SRC/examples/experiment-design.md" \
 # Applied to every reference markdown file; each rule only matches what it matches.
 rewrite() {
   perl -i -pe '
-    # relink the two A/B case examples to their local home
+    # relink the two A/B case examples to their local home (playbook uses examples/,
+    # deep-dives use ../examples/; both map onto reference/case-walkthroughs/)
     s{\(\.\./\.\./ab-testing/examples/}{(case-walkthroughs/}g;
+    s{\]\(examples/}{](case-walkthroughs/}g;
+    s{\]\(\.\./examples/}{](../case-walkthroughs/}g;
     # deep-dive back-links point at the renamed playbook
     s{\.\./playbook\.md}{../ab-testing-playbook.md}g;
     s{`playbook\.md`}{`ab-testing-playbook.md`}g;

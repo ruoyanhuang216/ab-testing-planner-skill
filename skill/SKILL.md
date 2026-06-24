@@ -139,8 +139,12 @@ If the user asks follow-up questions that need depth, read the relevant section 
 - `reference/deep-dives/test-statistics-and-sample-size.md` — §4/§8.6 test choice, assumptions, sample-size derivations, resampling.
 - `reference/deep-dives/variance-reduction-examples.md` — §5 a worked numeric example per method.
 - `reference/deep-dives/triggered-analysis.md` — §5.1 triggering & counterfactual logging.
+- `reference/deep-dives/multiple-comparisons.md` — §8.2 FWER vs FDR and the hybrid.
 - `reference/deep-dives/geo-randomization.md` and `network-randomization.md` — §7/§16 marketplace & social-graph interference.
+- `reference/deep-dives/sequential-testing.md`, `interleaving.md`, `heterogeneous-treatment-effects.md`, `multi-experiment-platforms.md` — the §15 frontier techniques.
+- `reference/deep-dives/worked-examples.md` — the full worked examples behind §4.4, §8.1, §8.4, §10.5, §13.
 - `reference/case-walkthroughs/` — end-to-end interview-style answers (A/B design; experimentation-platform design).
+- Full index: `reference/deep-dives/README.md`.
 
 ## Coaching mode
 
