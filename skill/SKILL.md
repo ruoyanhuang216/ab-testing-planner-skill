@@ -134,6 +134,14 @@ Load `reference/ab-testing-playbook.md` once via the `Read` tool. Cite specific 
 
 If the user asks follow-up questions that need depth, read the relevant section by number rather than dumping the whole file.
 
+**Deeper material (all local to this skill).** For topics with a dedicated expansion, `Read` the matching file instead of re-deriving — and cite it:
+- `reference/deep-dives/unit-of-analysis.md` — §3 randomization vs analysis unit; ICC/DEFF; CRSE & cluster bootstrap.
+- `reference/deep-dives/test-statistics-and-sample-size.md` — §4/§8.6 test choice, assumptions, sample-size derivations, resampling.
+- `reference/deep-dives/variance-reduction-examples.md` — §5 a worked numeric example per method.
+- `reference/deep-dives/triggered-analysis.md` — §5.1 triggering & counterfactual logging.
+- `reference/deep-dives/geo-randomization.md` and `network-randomization.md` — §7/§16 marketplace & social-graph interference.
+- `reference/case-walkthroughs/` — end-to-end interview-style answers (A/B design; experimentation-platform design).
+
 ## Coaching mode
 
 If the user wants to **review** their existing A/B plan rather than have you generate one, walk through the 10 components and flag missing or under-specified ones. Use the playbook's "Common interview traps & staff reflexes" (§14) as the gap-finder checklist.
