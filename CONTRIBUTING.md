@@ -58,7 +58,13 @@ If you're adding an example to `examples/`:
 
 ## Adding a new playbook section or making playbook edits
 
-The reference playbook (`reference/ab-testing-playbook.md`) is the depth source the skill reaches into. Edits to it:
+The reference playbook (`reference/ab-testing-playbook.md`), the `reference/deep-dives/`, and `reference/case-walkthroughs/` are **vendored** — they're maintained in private source notes and copied in (with link rewrites so the skill stays self-contained). To refresh them after editing the source, run:
+
+```bash
+scripts/sync-from-source.sh [path-to-source-ab-testing-dir]   # default: ~/staff-ds-interview-prep/ab-testing
+```
+
+It re-copies the files, rewrites cross-references to resolve locally, and **fails loudly** if any private reference survives or a local link breaks. Prefer editing the source + re-running this over hand-editing the vendored copies. Edits to it:
 
 1. **Branch named `notes/<topic>`**. The same prefix covers edits to the `reference/deep-dives/` expansions.
 2. **Don't break the section numbering** — if you add a new top-level section, renumber the related-notes section accordingly.
