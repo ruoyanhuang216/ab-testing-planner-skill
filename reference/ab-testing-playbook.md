@@ -13,7 +13,7 @@ Most A/B testing interview answers stop at "split users 50/50, run a t-test, loo
 
 This guide walks each of these in the order an interviewer probes them. Numbered math, decision tables, worked examples, and a Doordash-flavored end-to-end case at the close.
 
-> **Companion notes.** Quasi-experimental detail (DiD/RDD/IV/synthetic control/DML, sensitivity analysis, uplift) lives in [`ml-interview-prep/algorithms/notes/causal_inference.md`](../../repos/ml-interview-prep/algorithms/notes/causal_inference.md). Time-series considerations (seasonality, novelty fade, holdback dynamics) overlap with [`time_series_forecasting.md`](../../repos/ml-interview-prep/algorithms/notes/time_series_forecasting.md). This guide cross-links rather than duplicates.
+> **Companion notes.** Quasi-experimental detail (DiD/RDD/IV/synthetic control/DML, sensitivity analysis, uplift) lives in companion causal-inference notes. Time-series considerations (seasonality, novelty fade, holdback dynamics) overlap with companion time-series notes. This guide cross-links rather than duplicates.
 
 ---
 
@@ -111,11 +111,15 @@ The randomization unit is the level at which you flip a coin; the analysis unit 
 3. **Bootstrap at the randomization unit** — resample users, recompute the metric, repeat.
 4. **Cluster-robust standard errors** — regression with clustered SEs.
 
+> 📎 **Deep dive:** [The unit-of-analysis trap — ICC, DEFF, and the four fixes](deep-dives/unit-of-analysis.md) — the design-effect math, plus step-by-step worked examples (with code) for cluster-robust SEs and the cluster bootstrap.
+
 **Example.** *Doordash, ranker tweak that may show different restaurants on different sessions.* If you randomize by user, the ranker is consistent per user → clean. If you randomize by session, a hungry customer's "good" session can pull the next session's expectation — and you have within-user correlation. The right answer depends on whether the change can be invisible across sessions; if yes, session randomization gives more power, but you must analyze with the right variance.
 
 ---
 
 ## 4. Sample size & MDE — the math behind the number
+
+> 📎 **Deep dive:** [Test statistics & sample size — assumptions, derivations, and resampling](deep-dives/test-statistics-and-sample-size.md) — where each formula comes from (full derivations), the assumptions behind every test, when to go non-parametric, regression/advanced estimators, and the resampling toolbox (bootstrap, permutation, jackknife — when & how).
 
 ### 4.1 The formula
 
@@ -191,7 +195,11 @@ The pattern in production: experiment on driver metrics for sensitivity, then ru
 
 For the same traffic, variance reduction is the lever that turns "we can't detect this" into "we can." Five techniques in roughly ascending sophistication.
 
+> 📎 **Deep dive:** [Variance reduction — a worked example of each method](deep-dives/variance-reduction-examples.md) — a concrete, numeric example per technique (triggering, transformations, stratification, CUPED, paired/interleaving), how much each saves, what it costs, and how they compose multiplicatively.
+
 ### 5.1 Filtering / triggering — only count exposed users
+
+> 📎 **Deep dive:** [Triggered analysis & counterfactual logging (Robinhood Instant)](deep-dives/triggered-analysis.md) — a production example: nested exposure vs decision-divergence triggers, the ~1/trigger-rate power gain, and the validity conditions (arm-invariant trigger, counterfactual logging, no post-treatment selection).
 
 If only some users actually see the change, including the untreated dilutes the effect:
 
@@ -316,20 +324,24 @@ SUTVA (Stable Unit Treatment Value Assumption) demands that one unit's treatment
 
 ### 7.1 Designs that mitigate interference
 
+> 📎 **Deep dive:** [Geo randomization — coarse assignment, user-level questions (Uber)](deep-dives/geo-randomization.md) — why rider-level splits fail in a marketplace, why effective $n$ collapses to ~the number of cities, and how to analyze (DiD + CUPED + randomization inference, synthetic control for few markets).
+>
+> 📎 **Deep dive:** [Network / social-graph randomization](deep-dives/network-randomization.md) — why spillover travels along edges, the direct/spillover/GATE estimands, graph-cluster (Louvain/METIS) and saturation designs, and the edge-cut bias–variance knob.
+
 | Design | Mechanism | Cost |
 |---|---|---|
 | **Cluster randomization** (neighborhoods, friend cliques) | Treat whole clusters identically | Fewer effective units → more variance |
 | **Geo / market randomization** | Whole DMA / city goes treatment or control | Very few units, geographies differ |
 | **Switchback** (time slot) | Same market alternates treatment / control by hour or day | Carryover, day-of-week effects |
 | **Ego-network randomization** | Randomize seed, but include 1-hop neighbors in treated cluster | Hard to implement correctly |
-| **Counterfactual matched markets** | Use a synthetic control on a separate market as the comparator | Requires SCM modeling — see causal_inference.md |
+| **Counterfactual matched markets** | Use a synthetic control on a separate market as the comparator | Requires SCM modeling — see companion causal-inference notes |
 
 ### 7.2 The two-sided-market case — Doordash flavor
 
 For Doordash's market-level changes (new fee structure, expanded radius), the supply (restaurants, dashers) responds. Two valid designs:
 
 1. **Switchback by market × time slot.** Run treatment for 2-hour windows alternating with control across markets. Effective when carryover decays within the slot duration. Risks: dinner-rush bias, dashers learning the schedule.
-2. **Geo experiments (DMA-level).** Treat e.g. 30 cities, hold 30 as control, match on pre-period demand. Use synthetic-control style estimators (see [causal_inference.md](../../repos/ml-interview-prep/algorithms/notes/causal_inference.md) §Synthetic DiD). Few units → low power → MDE measured in single-digit percentage points typically.
+2. **Geo experiments (DMA-level).** Treat e.g. 30 cities, hold 30 as control, match on pre-period demand. Use synthetic-control style estimators (see companion causal-inference notes §Synthetic DiD). Few units → low power → MDE measured in single-digit percentage points typically.
 
 **Sanity check before declaring a two-sided design.**
 1. *How big is the spillover?* If small (e.g. 1% of treated drivers' deliveries displace control orders), unit-level randomization with a small interference adjustment can still be valid.
@@ -342,10 +354,24 @@ For Doordash's market-level changes (new fee structure, expanded radius), the su
 
 ### 8.1 Peeking and sequential testing
 
-Looking at the test early and stopping when it's "significant" inflates the type-I error far past $\alpha$. The fixes:
+Looking at the test early and stopping the moment it's "significant" inflates the type-I error far past $\alpha$.
+
+**Why peeking inflates Type-I error.** Under H₀ (no real effect) the running test statistic is a *random walk* — as data accumulates the cumulative difference wanders around zero and the p-value bounces up and down. A fixed-horizon test asks "is it past the boundary *at the one pre-set endpoint*?" — true ~5% of the time by construction. A peeker instead asks "does it *ever* cross the boundary at any of my looks?" Each look is another (correlated) chance to cross, so the probability of crossing *at least once* accumulates — this is the multiple-comparisons problem (§8.2), but across *time* instead of across metrics. With continuous monitoring the walk crosses any fixed boundary with probability → 1, so a determined peeker reaches "significance" on pure noise almost surely.
+
+A/A simulation (no true effect; stop early if a two-sample z ever crosses ±1.96), verified:
+
+```
+looks  →  false-positive rate (nominal 5%)
+   1    →    4.8%     # single fixed look — correct
+   5    →   13.8%
+  10    →   19.1%
+  50    →   30.2%     # peek often enough and ~1 in 3 A/A tests "wins"
+```
+
+The fixes:
 
 - **Don't peek.** Pre-commit to a duration; only read at the end.
-- **If you need to peek**, use **sequential testing** methods: mSPRT (mixture sequential probability ratio test), always-valid p-values (Howard et al.), group sequential boundaries (O'Brien-Fleming, Pocock). These preserve type-I error across multiple peeks at the cost of either some statistical efficiency or stricter early thresholds.
+- **If you need to peek**, use **sequential testing** methods: mSPRT (mixture sequential probability ratio test), always-valid p-values (Howard et al.), group sequential boundaries (O'Brien-Fleming, Pocock). These *widen the decision boundary at each look* so the cumulative crossing probability stays at $\alpha$ — at the cost of some efficiency or stricter early thresholds. Full quantified treatment in **§15.1**.
 - **For early stopping for *futility*** (no point continuing), use conditional power or predictive probability — both well-defined Bayesian / frequentist approaches.
 
 ### 8.2 Multiple hypothesis testing — FWER vs FDR
@@ -429,12 +455,37 @@ Diagnoses:
 
 Mitigations:
 - Run longer (4–8 weeks).
-- **Holdback experiment:** after launching, keep 1–5% of users on control indefinitely. Measure long-term effect on that holdback. Cross-reference [time_series_forecasting.md](../../repos/ml-interview-prep/algorithms/notes/time_series_forecasting.md) §Walk-forward retraining cadence — same discipline applies.
+- **Holdback experiment:** after launching, keep 1–5% of users on control indefinitely. Measure long-term effect on that holdback. Cross-reference companion time-series notes §Walk-forward retraining cadence — same discipline applies.
 - **Reverse experiment:** post-launch, switch a fresh sample of users *back* to control. Did they degrade? You've measured the steady-state effect.
 
 ### 8.4 Simpson's paradox
 
-Aggregated treatment effect disagrees with every subgroup's effect. Caused by differing assignment rates or differing baseline conversion rates across segments. The fix is to **stratify the analysis** and use a weighted estimator, or to ensure stratified randomization in the first place. Whenever the aggregate looks suspiciously different from segments, suspect Simpson.
+The aggregated treatment effect disagrees with — even *reverses* — every subgroup's effect. It needs two ingredients together: (a) segments with very different baseline rates, **and** (b) a treatment/control split that's *imbalanced across those segments* (from an assignment bug or organic traffic mix).
+
+**Worked example.** A new checkout flow, segmented by device. Treatment beats control *in each segment* yet loses *in aggregate* (verified):
+
+```
+            control   treat    diff
+Mobile      20.0%     22.0%    +2.0%
+Desktop     50.0%     52.0%    +2.0%
+AGGREGATE   40.0%     32.0%    -8.0%   ← reverses!
+```
+
+How? Treatment was disproportionately served to **Mobile** — the low-baseline segment (2000 treatment users vs 1000 control), while control skewed Desktop. The aggregate treatment rate is dragged down by its heavier mix of low-converting mobile traffic, *not* by the flow being worse. Aggregation confounds the *effect* with the *segment composition*.
+
+**The specific fix — stratify and re-weight.** Compute the effect *within* each segment, then combine with weights equal to each segment's share of the **overall** population (not its per-arm share):
+
+$$\widehat{\text{ATE}} = \sum_s w_s\,\big(\bar y_{s,\text{treat}} - \bar y_{s,\text{control}}\big), \qquad w_s = \frac{n_s}{N}$$
+
+```
+stratified (population-weighted) effect = +2.0%   ← recovers the true effect
+```
+
+This is the post-stratification / Cochran–Mantel–Haenszel estimator. Two levels of fix:
+- **Prevention (best):** **stratified randomization** — assign 50/50 *within* each segment, so the split is balanced by construction and Simpson can't arise from allocation. CUPED / regression adjustment that controls for the segment buys the same protection.
+- **Diagnosis:** an imbalanced split within segments is usually an **SRM** symptom (§6.2) — check per-segment assignment ratios before trusting any aggregate.
+
+*Staff reflex:* whenever the aggregate looks suspiciously different from the segments, suspect Simpson, and never report a pooled effect without confirming the arm split is balanced within the segments that drive the metric.
 
 ### 8.5 The launch decision quadrant
 
@@ -447,11 +498,34 @@ A two-by-two of *statistical* significance vs *practical* significance:
 
 **Practical-but-not-statistical** with CI extending past the practical threshold is the most-debated quadrant. The senior answer is *"the experiment doesn't have power to conclude; either re-run powered for the smaller effect, or — if the cost of relaunching is high and the downside is small — launch as a calculated bet with monitoring."*
 
+### 8.6 The test toolbox — which test for which statistic
+
+> 📎 **Deep dive:** [Test statistics & sample size](deep-dives/test-statistics-and-sample-size.md) — assumptions behind each statistic, when non-parametric is (and isn't) the right call, and the resampling toolbox.
+
+A/B analysis is "compare two groups," but *what* you compare — the **statistic** — decides the test. Lead with the right one; reach for a t-test on everything and an interviewer pounces.
+
+| You're testing… | Parametric (≈ normal / large n) | Non-parametric / robust | Formula / notes |
+|---|---|---|---|
+| **Mean**, 2 groups | Welch's t-test (unequal var) | Mann–Whitney U; permutation test | $t=\dfrac{\bar x_1-\bar x_2}{\sqrt{s_1^2/n_1+s_2^2/n_2}}$; large $n$ → z |
+| **Mean**, 1 group vs constant | one-sample t-test | Wilcoxon signed-rank | $t=(\bar x-\mu_0)/(s/\sqrt n)$ |
+| **Mean**, before/after (paired) | paired t-test | Wilcoxon signed-rank | t-test on the per-unit differences |
+| **Mean**, 3+ groups | one-way ANOVA ($F$) | Kruskal–Wallis | $F=\text{MS}_{\text{between}}/\text{MS}_{\text{within}}$ |
+| **Proportion**, 1–2 groups | two-proportion z-test | Fisher's exact (small $n$) | pooled SE (Appendix A.6); $\chi^2$ is equivalent |
+| **Proportion**, $r\times c$ table | $\chi^2$ test of independence | Fisher's exact | $\chi^2=\sum (O-E)^2/E$ |
+| **Variance / spread** | F-test (2 grps — *normality-sensitive!*) | **Levene** / **Brown–Forsythe** (robust) | prefer Levene in practice |
+| **Median / percentiles** | — (no clean normal test) | **quantile bootstrap**; Mood's median test | bootstrap the quantile's CI → **§15.4** |
+| **Whole distribution / shape** | — | Kolmogorov–Smirnov; Anderson–Darling; $\chi^2$ GOF | for "did the *distribution* change," not just the mean |
+| **Adaptive / sequential data** | mSPRT, always-valid p (**§15.1**) | — | iid tests are invalid under peeking/bandits |
+
+Three rules of thumb: **(1)** rates/counts → proportion or count tests, not a t-test on a 0/1 column; **(2)** heavy-tailed or skewed metrics (revenue, latency) → Welch + a non-parametric or bootstrap cross-check, or analyze a **capped / winsorized** version; **(3)** if you care about the *tail* (p95 latency) not the average, test the **quantile** (§15.4), not the mean.
+
+> **Cross-reference — the full test directory.** Derivations, assumptions, and the decision flowchart for every cell above live in a companion hypothesis-testing reference — Part 2 (means / proportions / variances / distributions), Part 8 (what happens when assumptions are violated), Part 9 (decision flowchart), and **Appendix A** (Wilcoxon signed-rank, Mann–Whitney U, Kruskal–Wallis, Fisher's exact, Levene / Brown–Forsythe, Friedman, binomial exact).
+
 ---
 
 ## 9. When you can't randomize — quasi-experiments
 
-When A/B testing is impossible or impractical, the rigorous fallback is quasi-experimental causal inference. Brief map; deep treatment lives in [causal_inference.md](../../repos/ml-interview-prep/algorithms/notes/causal_inference.md).
+When A/B testing is impossible or impractical, the rigorous fallback is quasi-experimental causal inference. Brief map; deep treatment lives in companion causal-inference notes.
 
 | Method | When to use | Identifying assumption |
 |---|---|---|
@@ -539,6 +613,21 @@ When A/B wins:
 
 **Post-experiment analysis under MAB**: standard statistical tests do not apply because the allocation is not iid. Use **importance-weighted estimators**, **off-policy evaluation**, or **sequential testing methods** designed for adaptive allocation. State this if you propose MAB.
 
+### 10.5 Worked example — MAB beats A/B for a short-lived headline test
+
+*"You have 5 candidate headlines for a news story that's only hot for a day. A/B/n or bandit?"*
+
+A fixed A/B/n splits traffic **evenly across all 5** for the whole test, so 80% of impressions go to non-winners — and by the time you'd "call" it, the story is cold. A bandit shifts traffic toward the leader *as it learns*, so most impressions land on the eventual winner *during the window that matters*. Simulation over 100k impressions, true CTRs `[3%, 4%, 5%, 4.5%, 3.5%]` (verified):
+
+```
+oracle (always the 5% headline): 5000 clicks
+Thompson Sampling              : 4782 clicks
+A/B/n equal split              : 4015 clicks
+→ MAB captured 767 extra clicks (~19% more) during the test itself
+```
+
+The 767 clicks are **saved regret** — the opportunity cost A/B/n pays to hold an even split. This is the canonical "MAB more suited" setting from §10.2: **the test period is where the reward is** (short shelf-life), **opportunity cost per losing impression is direct** (lost clicks/revenue), and **many arms** make even-splitting expensive. Contrast §10.3's "A/B wins" conditions — if you needed a clean per-headline causal CTR estimate to feed a downstream model, the bandit's adaptive allocation would break naive inference and you'd want the fixed split instead. Decision rubric: **§12**.
+
 ---
 
 ## 11. Multivariate / factorial designs
@@ -560,6 +649,25 @@ Per-cell sample size grows with the number of factors. Use a factorial when inte
 | D | New | New |
 
 The interaction term tests whether new ranker + new layout perform differently than the sum of their individual effects. Usually small; if you can't power for it, run two separate single-factor tests.
+
+**The test statistics.** Code the two factors as $X, Y \in \{0,1\}$ (or $\pm 1$) and fit a regression with an interaction term:
+
+$$y = \beta_0 + \beta_X X + \beta_Y Y + \beta_{XY}\,(X\cdot Y) + \varepsilon$$
+
+- **Main effect of X** $=\beta_X$ (the ranker's effect at $Y=0$); **main effect of Y** $=\beta_Y$. Test each with its **t-statistic** $t=\hat\beta/\text{SE}(\hat\beta)$.
+- **Interaction** $=\beta_{XY}$ — how much the two *together* differ from the sum of their parts; tested the same way (or a **two-way ANOVA** $F$-test per effect, equivalent for a balanced $2\times2$). $\beta_{XY}>0$ = synergy, $<0$ = antagonism / cannibalization.
+- Powering the interaction needs **~4× the per-arm sample** of a main effect at the same MDE (the interaction contrast carries roughly twice the SE) — the usual reason teams can't conclude on it.
+
+**Shipping decision logic.** Read the interaction *first*, then the main effects:
+
+| Interaction $\beta_{XY}$ | Then look at | Ship decision |
+|---|---|---|
+| Not significant | each main effect independently | ship whichever factors individually win — they're additive, they don't interfere |
+| Significant **> 0** (synergy) | — | ship **X and Y together**; the combo beats the parts (e.g. the new ranker only shines under the new layout) |
+| Significant **< 0** (antagonism) | — | ship **only the better single factor**; shipping both destroys value (they cannibalize) |
+| Not sig, under-powered | strong main effects | ship on the main effects, but **keep the combined cell as a monitored holdback** post-launch |
+
+*Staff reflex:* the factorial earns its cost in the **antagonism** case — two features that each test positive *alone* but hurt *together*. Separate single-factor tests would green-light both and you'd ship a loss; the interaction term is the only thing that flags it. For the full $2^k$ machinery — effect contrasts, confounding / aliasing in fractional designs, and resolution — see the DOE notes in a companion DOE reference (Part 3), and the test-statistic directory in that hypothesis-testing reference (referenced in §8.6).
 
 ---
 
@@ -627,7 +735,7 @@ A/B test is the right tool.
 
 - This is a one-sided demand change; supply-side spillover is small but non-zero (more demand pulls dashers).
 - Run in a few medium-sized markets first; cross-validate with a switchback design before national rollout.
-- Cross-reference with [causal_inference.md](../../repos/ml-interview-prep/algorithms/notes/causal_inference.md) for synthetic-DiD on the market-level rollout.
+- Cross-reference with companion causal-inference notes for synthetic-DiD on the market-level rollout.
 
 ### Step 5 — Analysis
 
@@ -1158,7 +1266,7 @@ These numbers are the floor for "platform-scale" — if a candidate says "we'd r
 - [It's All A/Bout Testing: The Netflix Experimentation Platform (Netflix Tech Blog)](https://netflixtechblog.com/its-all-a-bout-testing-the-netflix-experimentation-platform-4e1ca458c15) — the XP overview.
 - [Testing for arbitrary interference on experimentation platforms (Saint-Jacques et al. — LinkedIn, 2017)](https://arxiv.org/abs/1704.01190) — platform-side interaction detection.
 
-> **Case-walkthrough companion.** See [`ab-testing/examples/experimentation-platform-design.md`](https://github.com/ruoyanhuang216/staff-ds-interview-prep/blob/main/ab-testing/examples/experimentation-platform-design.md) for the step-by-step walkthrough of *"Design an experimentation platform for LinkedIn"* using this material — the 6-step framework for the interview answer.
+> **Case-walkthrough companion.** See [`examples/experimentation-platform-design.md`](case-walkthroughs/experimentation-platform-design.md) for the step-by-step walkthrough of *"Design an experimentation platform for LinkedIn"* using this material — the 6-step framework for the interview answer.
 
 ### 15.7 Further reading — Netflix references
 
@@ -1167,7 +1275,7 @@ These numbers are the floor for "platform-scale" — if a candidate says "we'd r
 - [Anytime-Valid Linear Models and Regression Adjusted Causal Inference](https://research.netflix.com/publication/anytime-valid-linear-models-and-regression-adjusted-causal-inference-in) — §15.2 reference.
 - [Innovating Faster on Personalization Algorithms at Netflix Using Interleaving](https://netflixtechblog.com/interleaving-in-online-experiments-at-netflix-a04ee392ec55) — §15.3 reference.
 - [Reimagining Experimentation Analysis at Netflix](https://netflixtechblog.com/reimagining-experimentation-analysis-at-netflix-71356393af21) — analysis-pipeline overview covering CUPED, sequential testing, quantile metrics, and CATE.
-- [Quasi Experimentation at Netflix](https://netflixtechblog.com/quasi-experimentation-at-netflix-566b57d2e362) — server-level diff-in-diff on Open Connect (see also [`causal-inference-product.md`](./causal-inference-product.md)).
+- [Quasi Experimentation at Netflix](https://netflixtechblog.com/quasi-experimentation-at-netflix-566b57d2e362) — server-level diff-in-diff on Open Connect (see also companion causal-inference notes).
 - [A Survey of Causal Inference Applications at Netflix](https://netflixtechblog.com/a-survey-of-causal-inference-applications-at-netflix-b62d25175e6f) and [Round 2](https://netflixtechblog.com/round-2-a-survey-of-causal-inference-applications-at-netflix-fd78328ee0bb) — broader catalog of CI methods in production.
 - [It's All A/Bout Testing: The Netflix Experimentation Platform](https://netflixtechblog.com/its-all-a-bout-testing-the-netflix-experimentation-platform-4e1ca458c15) — the XP platform's design philosophy.
 - [Engineering for a Science-Centric Experimentation Platform (Diamantopoulos et al., 2019)](https://arxiv.org/abs/1910.03878) — architectural paper on XP.
@@ -1179,6 +1287,8 @@ These numbers are the floor for "platform-scale" — if a candidate says "we'd r
 Section §15 covers six Netflix-flavored frontier techniques. The six below are *also* frontier but live in a different industry literature — Lyft / DoorDash for switchback at scale, LinkedIn for network interference, Booking.com / Google for Bayesian A/B, and the post-2023 generative-AI experimentation wave.
 
 ### 16.1 Switchback designs at scale — Lyft / DoorDash / Uber
+
+> 📎 **Deep dive:** [Geo randomization (Uber)](deep-dives/geo-randomization.md) — switchback as the variance-reducing variant of geo, the effective-$n$ collapse, and the analysis recipe.
 
 For products with **strong temporal demand patterns + supply-side spillover** (rideshare, food delivery, dynamic pricing), unit-level randomization violates SUTVA (§7) because the treated drivers/dashers aren't available for control orders in the same minute. The fix is **switchback**: assign treatment by **time slot × geography**, alternating.
 
@@ -1196,6 +1306,8 @@ For products with **strong temporal demand patterns + supply-side spillover** (r
 **Citations.** [Bojinov, Simchi-Levi, Zhao — "Design and Analysis of Switchback Experiments" (Management Science 2023)](https://arxiv.org/abs/2009.00148); the Lyft Engineering blog has several published case studies on rider-level vs switchback comparisons.
 
 ### 16.2 Network interference detection at scale — ego clusters
+
+> 📎 **Deep dive:** [Network / social-graph randomization](deep-dives/network-randomization.md) — direct/spillover/GATE estimands and the exposure mapping, graph-cluster (Louvain/METIS) + saturation/two-stage designs, the edge-cut bias–variance knob, and cluster-level inference.
 
 LinkedIn's published work (Saint-Jacques et al. 2017, Karrer et al. 2021, Lin et al. 2023) addresses the practical question: **at platform scale, how do you detect when an experiment has network spillover, and how do you correct it?**
 
@@ -1378,7 +1490,7 @@ The mapping back to existing sections, for quick reference:
 | Ch 13: Variance reduction (CUPED) | §5; §15.2 |
 | Ch 14: Long-term effects | §8.3; §15.6.7 holdback |
 | Ch 15: Network effects | §7; §16.2 above |
-| Ch 16–17: Heterogeneous effects; quasi-experiments | §15.5; [`causal-inference-product.md`](./causal-inference-product.md) |
+| Ch 16–17: Heterogeneous effects; quasi-experiments | §15.5; companion causal-inference notes |
 | Ch 22: Common pitfalls | §6, §8, §14 |
 
 ### 17.8 Reference
@@ -1387,10 +1499,107 @@ The mapping back to existing sections, for quick reference:
 
 ---
 
+## Appendix A — Foundations refresher: the Udacity / Google "A/B Testing" course
+
+*A back-to-basics review of the canonical fundamentals, for warming up before an interview. The body of this playbook is staff-level; this appendix is the ground floor it stands on. Notes adapted from Google's Udacity course **"A/B Testing"** (Carrie Grimes & Caroline Buckey), via the community notes repo [`nktnlx/ab_testing_by_google_udacity`](https://github.com/nktnlx/ab_testing_by_google_udacity). The §-links point to where each idea is developed in depth above.*
+
+Five modules in one pass, then a formula quick-card and the mapping back to the deep sections.
+
+### A.1 Overview & the statistics core
+- **The process:** hypothesis → choose metric → review statistics → design → analyze → decide.
+- **CTR vs CTP.** *Click-through **rate*** = clicks / page-views (an event rate). *Click-through **probability*** = unique users who clicked / unique users (a per-user probability ≤ 1). Use CTP when the question is "did the user click *at all*" and the unit of analysis is the user.
+- **Binomial → Normal.** A click-probability metric is binomial; for large n it's approximately Normal, which is what lets you use z-scores. SE of one proportion: `SE = √[p(1−p)/n]`. The normal approximation holds when `n·p > 5` (and `n·(1−p) > 5`).
+- **Confidence interval:** `p̂ ± z·SE`; `z = 1.96` for 95%.
+- **Hypothesis testing:** H₀ = "no difference," Hα = "difference"; two-tailed (direction-agnostic) vs one-tailed.
+- **Two error rates:** α = P(reject H₀ | H₀ true) = Type I; β = P(fail to reject | Hα true) = Type II; **power = 1 − β** (conventionally 80%). Smaller α or higher power ⇒ larger n. → developed in **§4**.
+
+### A.2 Policy & ethics
+Four questions before running on people: **(1) Risk** — does participation exceed minimal risk? **(2) Benefit** — what's the upside, and who gets it? **(3) Alternatives** — what choices do participants have? **(4) Data sensitivity** — is the data sensitive (health, finance), and how is identity protected? Data classes by linkability: **identified → pseudonymous → anonymous → anonymized**.
+
+### A.3 Choosing & characterizing metrics
+- **Invariant (sanity) metrics** — should *not* differ across arms (population counts, the 50/50 split ratio, anything upstream of the change); used for sanity checks, not for measuring the effect. → **§6**.
+- **Evaluation metrics** — the high-level business metric(s) plus detailed metrics, combined into an **OEC**. → **§2**, **§17.4**.
+- **Build metrics from the funnel** — each step suggests a candidate; for each, *define* (high-level) → *specify* (exact formula) → *summarize* (sum / mean / median / percentile / rate / probability / ratio).
+- **Sensitivity & robustness** — a good metric *moves when it should* (sensitive) and *is stable to irrelevant changes* (robust); validate with A/A tests and retrospective analysis.
+- **Variance — analytic vs empirical.** Analytic variance (e.g. binomial `p(1−p)/n`) is only valid when the **unit of analysis = unit of diversion**. When they differ, analytic variance *under*-estimates the spread → measure it **empirically** (A/A test or bootstrap). → **§3**, **§6.1**.
+- **A/A test** — same treatment in both arms; you should see no significant difference. Validates the pipeline, estimates real variability, and yields an **empirical CI**. → **§6.1**.
+
+### A.4 Designing an experiment
+- **Unit of diversion** — how users are assigned: **user-ID** (stable, cross-device, needs login), **anonymous cookie** (per browser/device), **event** (re-randomizes each event; for non-user-visible changes), **device-ID** (mobile), **IP** (coarse). The choice sets exposure consistency, variability, and ethics.
+- **Unit of analysis vs unit of diversion** — if the analysis unit is finer than the diversion unit, observations correlate and true variance > analytic ⇒ use empirical variance. → **§3**.
+- **Population & cohort** — who's eligible (targeting), and when to use a **cohort** (users present before *and* during) instead of the whole population — needed for learning effects or retention.
+- **Learning effects** — **change aversion** (early dip) and **novelty** (early spike) both fade; run longer and/or use a cohort. → **§8.3**.
+- **Sizing** — trade % traffic × duration × exposed fraction against risk; add pre-/post-periods for monitoring. → **§4**.
+
+### A.5 Analyzing results
+- **Sanity checks first.** Verify invariant metrics and the **group-size ratio** (expected 0.5; build a binomial CI around the observed split — this is **SRM**). If a check fails, *stop and debug* — don't read the result. → **§6.2**.
+- **Single metric** — compute the difference `d̂` and its CI; it ships only if the CI clears **both** 0 (statistical significance) and `d_min` (practical significance). → **§8.5**.
+- **Sign test** — a non-parametric cross-check (e.g. did the metric improve on most days?); agreement with the effect-size test builds confidence.
+- **Simpson's paradox** — an aggregate effect can reverse within every subgroup; check segment-level. → **§8.4**.
+- **Multiple comparisons** — more metrics ⇒ more false positives. **Bonferroni** (`α/m`; conservative, controls FWER) vs **FDR** (controls the false-discovery *proportion*; better for many metrics). → **§8.2**.
+- **Launch decision** — statistically *and* practically significant, sanity checks pass, effect worth the cost/risk. → **§8.5**, **§12**.
+
+### A.6 Formula quick-card
+
+| Quantity | Formula |
+|---|---|
+| SE of one proportion | `√[p(1−p)/n]` |
+| Normal-approx validity | `n·p > 5` and `n·(1−p) > 5` |
+| 95% CI | `p̂ ± 1.96·SE` |
+| Pooled SE (two proportions) | `√[ p̄(1−p̄)·(1/n_c + 1/n_e) ]`,  `p̄ = (x_c+x_e)/(n_c+n_e)` |
+| Significance of a difference | CI of `d̂ = p_e − p_c` excludes 0 **and** exceeds `d_min` |
+| Power / α conventions | power `= 1−β` (80%),  α (5%) |
+| Bonferroni correction | test each of m metrics at `α/m` |
+
+Worked numbers from the course's two-proportion test + a sample-size calc (verified output):
+
+```python
+import math
+# Two-proportion CTP test (control vs experiment)
+x_c, n_c = 974, 10072
+x_e, n_e = 1242, 9886
+p_c, p_e = x_c/n_c, x_e/n_e
+p_pool = (x_c + x_e)/(n_c + n_e)
+se = math.sqrt(p_pool*(1-p_pool)*(1/n_c + 1/n_e))    # pooled SE
+d  = p_e - p_c                                        # +0.0289
+ci = (d - 1.96*se, d + 1.96*se)                       # (+0.0202, +0.0376) → excludes 0
+
+# Sample size PER ARM to detect d_min at alpha=5% (two-sided), power=80%
+def sample_size(p, d_min, z_a=1.960, z_b=0.8416):
+    return math.ceil(((z_a + z_b)**2 * 2*p*(1-p)) / d_min**2)
+sample_size(0.10, 0.02)     # → 3533 users per arm
+```
+
+```
+p_control=0.0967  p_exp=0.1256  diff=+0.0289
+pooled SE=0.00445  95% CI=(+0.0202, +0.0376)  → significant
+baseline p=0.10, MDE=0.02 → ~3,533 users per arm
+```
+
+### A.7 How the course maps onto this playbook
+
+| Udacity module | Deepened here |
+|---|---|
+| Metrics, OEC, funnels | **§2**, **§17.4** |
+| Variance: analytic vs empirical, bootstrap | **§3**, **§6.1**, **§15.4** |
+| Sample size, power, MDE | **§4** |
+| Unit of diversion vs analysis | **§3** |
+| A/A tests, SRM, sanity checks | **§6** |
+| Multiple comparisons (Bonferroni / FDR) | **§8.2** |
+| Simpson's paradox | **§8.4** |
+| Novelty / change aversion | **§8.3** |
+| Launch decision | **§8.5**, **§12** |
+
+*Use this appendix to warm up; use the numbered sections to go from "I know the definitions" to "I can defend the design under interrogation."*
+
+---
+
 ## 18. Related notes
 
-- [`ml-interview-prep/algorithms/notes/causal_inference.md`](../../repos/ml-interview-prep/algorithms/notes/causal_inference.md) — DiD / RDD / IV / synthetic control / DML / uplift / sensitivity analysis.
-- [`ml-interview-prep/algorithms/notes/time_series_forecasting.md`](../../repos/ml-interview-prep/algorithms/notes/time_series_forecasting.md) — walk-forward validation, look-ahead bias, drift monitoring (parallels novelty/holdback discipline).
-- [`ab-testing/examples/experiment-design.md`](https://github.com/ruoyanhuang216/staff-ds-interview-prep/blob/main/ab-testing/examples/experiment-design.md) — the shorter case-walkthrough version of A/B design (use this for the interview answer; this file for the playbook depth).
-- [`ab-testing/examples/experimentation-platform-design.md`](https://github.com/ruoyanhuang216/staff-ds-interview-prep/blob/main/ab-testing/examples/experimentation-platform-design.md) — the LinkedIn "design a platform" system-design case walkthrough.
-- [`metric-diagnosis/examples/metrics-diagnosis.md`](https://github.com/ruoyanhuang216/staff-ds-interview-prep/blob/main/metric-diagnosis/examples/metrics-diagnosis.md) — what to do when a metric *moved* and you have to investigate, not run an experiment.
+- companion causal-inference notes — DiD / RDD / IV / synthetic control / DML / uplift / sensitivity analysis.
+- companion time-series notes — walk-forward validation, look-ahead bias, drift monitoring (parallels novelty/holdback discipline).
+- [`examples/experiment-design.md`](case-walkthroughs/experiment-design.md) — the shorter case-walkthrough version of A/B design (use this for the interview answer; this file for the playbook depth).
+- [`examples/experimentation-platform-design.md`](case-walkthroughs/experimentation-platform-design.md) — the LinkedIn "design a platform" system-design case walkthrough.
+- companion metric-diagnosis notes — what to do when a metric *moved* and you have to investigate, not run an experiment.
+- a companion hypothesis-testing reference — the hypothesis-test decision framework behind §8.6: means / proportions / variances / distributions, assumption violations, and the non-parametric test directory (Appendix A).
+- a companion DOE reference — DOE depth behind §11: $2^k$ factorial effect estimation, ANOVA, blocking, confounding / aliasing, fractional designs.

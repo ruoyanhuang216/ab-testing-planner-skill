@@ -1,6 +1,6 @@
 # Contributing
 
-This repo uses a **feature-branch + no-fast-forward merge** workflow for all changes. Every change — documentation, examples, playbook edits, skill tweaks, even small fixes — goes through a branch and gets merged into `main` with an explicit merge commit. The pattern matches the convention in [`staff-ds-interview-prep`](https://github.com/ruoyanhuang216/staff-ds-interview-prep) (this skill's parent reference repo).
+This repo uses a **feature-branch + no-fast-forward merge** workflow for all changes. Every change — documentation, examples, playbook edits, skill tweaks, even small fixes — goes through a branch and gets merged into `main` with an explicit merge commit. It's standard GitHub Flow with `--no-ff` merges.
 
 ## The workflow
 
@@ -45,7 +45,6 @@ git push origin --delete examples/new-example
 - **Logical change boundaries** are preserved in `git log --graph` — each example, each playbook section change, each fix is a self-contained merge.
 - **Reverting is one command** — `git revert -m 1 <merge-commit>` undoes the entire change cleanly.
 - **Community PRs feel native** — the convention matches GitHub Flow, so external contributors don't have to learn a custom pattern.
-- **Aligns with the sibling repo** ([`staff-ds-interview-prep`](https://github.com/ruoyanhuang216/staff-ds-interview-prep)) so muscle memory transfers.
 
 ## Adding a new worked example
 
@@ -61,7 +60,7 @@ If you're adding an example to `examples/`:
 
 The reference playbook (`reference/ab-testing-playbook.md`) is the depth source the skill reaches into. Edits to it:
 
-1. **Branch named `notes/<topic>`** (mirrors the `staff-ds-interview-prep` convention).
+1. **Branch named `notes/<topic>`**. The same prefix covers edits to the `reference/deep-dives/` expansions.
 2. **Don't break the section numbering** — if you add a new top-level section, renumber the related-notes section accordingly.
 3. **Cross-references should be kept consistent** — when adding a citation, link the actual paper / blog inline.
 4. **Mention in the commit message** which existing files in `examples/` reference the section, in case they need to be updated.

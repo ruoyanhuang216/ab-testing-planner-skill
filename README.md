@@ -1,11 +1,10 @@
 # A/B Testing Plan Generator — A Claude Code Skill
 
 [![Claude Code Skill](https://img.shields.io/badge/Claude%20Code-Skill-d97757)](https://docs.claude.com/en/docs/agents/skills)
-[![Reference repo: staff-ds-interview-prep](https://img.shields.io/badge/reference-staff--ds--interview--prep-24292e?logo=github)](https://github.com/ruoyanhuang216/staff-ds-interview-prep)
 
 Give it a product problem; it produces a staff-DS-grade A/B testing plan.
 
-This is a Claude Code [Skill](https://docs.claude.com/en/docs/agents/skills) that packages a 1,400-line staff-level A/B testing playbook (drawn from Netflix XP, LinkedIn T-REX, Microsoft ExP, the Kohavi-Tang-Xu *Trustworthy Online Controlled Experiments* book, and 2020s frontier research on anytime-valid sequential testing, interleaving, CUPED, and CATE) into a single slash command. You point it at a product problem, it walks the full plan.
+This is a Claude Code [Skill](https://docs.claude.com/en/docs/agents/skills) that packages a ~1,600-line staff-level A/B testing playbook — plus focused deep-dive expansions and end-to-end case walkthroughs — (drawn from Netflix XP, LinkedIn T-REX, Microsoft ExP, the Kohavi-Tang-Xu *Trustworthy Online Controlled Experiments* book, and 2020s frontier research on anytime-valid sequential testing, interleaving, CUPED, and CATE) into a single slash command. You point it at a product problem, it walks the full plan.
 
 ## What it produces
 
@@ -92,19 +91,30 @@ Read these end-to-end to see the iterative pattern that distinguishes a junior p
 ab-testing-planner-skill/
 ├── README.md                           ← this file
 ├── LICENSE                             ← MIT
+├── CONTRIBUTING.md
 ├── skill/
 │   └── SKILL.md                        ← the slash command definition + 10-component planning framework
 ├── reference/
-│   └── ab-testing-playbook.md          ← the 1,400-line staff-level playbook the skill draws from
-└── examples/
-    └── spotify-shuffle-removal.md      ← worked example showing first-pass + depth-pass iteration
+│   ├── ab-testing-playbook.md          ← the ~1,600-line staff-level playbook the skill draws from
+│   ├── deep-dives/                     ← focused expansions of playbook sections (math, worked examples, code)
+│   │   ├── unit-of-analysis.md             · §3 — ICC/DEFF, CRSE & cluster-bootstrap
+│   │   ├── test-statistics-and-sample-size.md  · §4/§8.6 — tests, assumptions, derivations, resampling
+│   │   ├── geo-randomization.md            · §7/§16.1 — marketplace interference (Uber)
+│   │   ├── network-randomization.md        · §7/§16.2 — social-graph spillover, GATE
+│   │   ├── triggered-analysis.md           · §5.1 — triggering, counterfactual logging
+│   │   └── variance-reduction-examples.md  · §5 — a worked example per method
+│   └── case-walkthroughs/              ← end-to-end interview-style case answers
+│       ├── experiment-design.md            · the A/B design case answer
+│       └── experimentation-platform-design.md  · the LinkedIn "design a platform" case
+└── examples/                           ← seven full first-pass + depth-pass skill conversations
+    └── spotify-shuffle-removal.md          · (and six others)
 ```
 
-The skill is intentionally lightweight — most of the value is in the planning framework encoded in `SKILL.md` plus the reference depth in the playbook. The skill reads the playbook at invocation time and applies the framework. The `examples/` folder shows what a complete senior-DS conversation with the skill looks like.
+The skill is intentionally lightweight — most of the value is in the planning framework encoded in `SKILL.md` plus the reference depth. The skill reads the playbook at invocation time and applies the framework; for extra depth it can read the matching file under `reference/deep-dives/` or `reference/case-walkthroughs/`. The `examples/` folder shows what a complete senior-DS conversation with the skill looks like. **Everything the skill needs lives in this repo — no external/private dependencies.**
 
 ## Provenance
 
-The reference playbook (`reference/ab-testing-playbook.md`, ~1,400 lines, 18 sections) is drawn from the [`staff-ds-interview-prep`](https://github.com/ruoyanhuang216/staff-ds-interview-prep) repo's deeper case-interview material, focused down to A/B testing specifics. It cross-references companion topics (causal inference, product sense, metric diagnosis) that aren't part of this skill but are part of the broader interview-prep set.
+The reference playbook (`reference/ab-testing-playbook.md`, ~1,600 lines, 18 sections), the `reference/deep-dives/` expansions, and the `reference/case-walkthroughs/` are adapted from my broader staff-DS interview-prep notes, focused down to A/B testing specifics. They mention companion topics (causal inference, time-series, metric diagnosis, hypothesis-testing/DOE) that live outside this skill — those are referenced in prose only, so **this repo is fully self-contained for A/B testing**.
 
 Headline sources behind the playbook:
 - Kohavi, Tang, Xu — *Trustworthy Online Controlled Experiments* (Cambridge 2020)
