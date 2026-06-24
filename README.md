@@ -97,12 +97,11 @@ ab-testing-planner-skill/
 ├── reference/
 │   ├── ab-testing-playbook.md          ← the ~1,600-line staff-level playbook the skill draws from
 │   ├── deep-dives/                     ← focused expansions of playbook sections (math, worked examples, code)
-│   │   ├── unit-of-analysis.md             · §3 — ICC/DEFF, CRSE & cluster-bootstrap
-│   │   ├── test-statistics-and-sample-size.md  · §4/§8.6 — tests, assumptions, derivations, resampling
-│   │   ├── geo-randomization.md            · §7/§16.1 — marketplace interference (Uber)
-│   │   ├── network-randomization.md        · §7/§16.2 — social-graph spillover, GATE
-│   │   ├── triggered-analysis.md           · §5.1 — triggering, counterfactual logging
-│   │   └── variance-reduction-examples.md  · §5 — a worked example per method
+│   │   ├── README.md                       · the deep-dive index (one row per file)
+│   │   └── …                               · 12 topic files — unit-of-analysis, test-statistics,
+│   │                                         variance-reduction, triggered-analysis, geo/network
+│   │                                         randomization, multiple-comparisons, sequential-testing,
+│   │                                         interleaving, HTE, multi-experiment-platforms, worked-examples
 │   └── case-walkthroughs/              ← end-to-end interview-style case answers
 │       ├── experiment-design.md            · the A/B design case answer
 │       └── experimentation-platform-design.md  · the LinkedIn "design a platform" case

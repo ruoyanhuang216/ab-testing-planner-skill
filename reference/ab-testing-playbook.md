@@ -164,30 +164,9 @@ Anti-patterns:
 
 ### 4.4 Worked example — UAR (User Account Recovery)
 
-A common interview probe: *"Account recovery: lockout rate is 10% of monthly users; the recovery flow has a 50% pass rate. We want to detect a 15% relative improvement. What's the sample size?"*
+A common probe — *lockout 10%, recovery pass-rate 50%, detect a 15% relative lift* — illustrates the **driver-vs-success-metric tradeoff**: the rare downstream success metric needs ~9× more users than the dense mid-funnel driver, because $\delta$ enters $n\approx 16\sigma^2/\delta^2$ *squared*. Power on the driver (when it's causally linked to success — §2.2), then validate the success metric on a long holdback.
 
-The point is the **driver-vs-success-metric tradeoff**: success metrics are downstream and rare (small $p$, small $\delta$), so they need huge $n$; driver metrics are upstream and dense ($p$ near 0.5, larger $\delta$), so they need far fewer.
-
-| Metric | What it measures | Baseline $p$ | Relative MDE | Absolute $\delta$ | $\sigma^2 = p(1-p)$ | $n$ per arm |
-|---|---|---|---|---|---|---|
-| **Success** (% raising lockout ticket) | Downstream outcome | 0.10 | 15% | 0.015 | 0.090 | ≈ 6,400 |
-| **Driver** (% passing the recovery flow) | Mid-funnel proxy | 0.50 | 15% | 0.075 | 0.250 | ≈ 711 |
-
-Math with $n \approx 16\sigma^2/\delta^2$ per arm:
-- Success: $16 \cdot 0.09 / 0.015^2 = 1.44 / 0.000225 \approx 6{,}400$
-- Driver: $16 \cdot 0.25 / 0.075^2 = 4.0 / 0.005625 \approx 711$
-
-**Driver needs ~9× fewer users** for the same relative effect. Two staff takeaways:
-
-1. **Don't power on the rare downstream metric** when a dense upstream proxy moves first — *provided* the proxy is causally linked to the success metric (validate the link on historical experiments — see §2.2).
-2. **The $\delta^2$ in the denominator dominates.** A metric at $p = 0.5$ has the largest possible $\sigma^2$, but its absolute $\delta$ for a given relative effect is also largest — and $\delta$ enters squared. Dense metrics often need fewer users than rare ones, despite higher variance per unit.
-
-The pattern in production: experiment on driver metrics for sensitivity, then run a long-running holdback to validate the success metric moves over time.
-
-**Sanity check before launching.**
-1. *Does the required $n$ fit in the traffic budget × duration we can afford?* If not, you need variance reduction (next section), a longer window, or a coarser metric.
-2. *Have we accounted for the duration multiplier?* You need at least a week to cover day-of-week effects; longer if there's seasonality or novelty.
-3. *Is the SRM detector configured?* You should know you'd catch a 50/50 split breaking before you read results.
+> 📎 **Worked example:** [the full sample-size math, both metrics](deep-dives/worked-examples.md#uar-sample-size-example).
 
 ---
 
@@ -358,15 +337,7 @@ Looking at the test early and stopping the moment it's "significant" inflates th
 
 **Why peeking inflates Type-I error.** Under H₀ (no real effect) the running test statistic is a *random walk* — as data accumulates the cumulative difference wanders around zero and the p-value bounces up and down. A fixed-horizon test asks "is it past the boundary *at the one pre-set endpoint*?" — true ~5% of the time by construction. A peeker instead asks "does it *ever* cross the boundary at any of my looks?" Each look is another (correlated) chance to cross, so the probability of crossing *at least once* accumulates — this is the multiple-comparisons problem (§8.2), but across *time* instead of across metrics. With continuous monitoring the walk crosses any fixed boundary with probability → 1, so a determined peeker reaches "significance" on pure noise almost surely.
 
-A/A simulation (no true effect; stop early if a two-sample z ever crosses ±1.96), verified:
-
-```
-looks  →  false-positive rate (nominal 5%)
-   1    →    4.8%     # single fixed look — correct
-   5    →   13.8%
-  10    →   19.1%
-  50    →   30.2%     # peek often enough and ~1 in 3 A/A tests "wins"
-```
+An A/A simulation makes it concrete — peeking at 1 / 5 / 10 / 50 looks drives the false-positive rate from ~5% to ~30%; see the [worked example](deep-dives/worked-examples.md#aa-peeking-simulation).
 
 The fixes:
 
@@ -376,71 +347,9 @@ The fixes:
 
 ### 8.2 Multiple hypothesis testing — FWER vs FDR
 
-If you test $K$ metrics, the chance at least one is significant at $\alpha = 0.05$ by luck is $1 - 0.95^K$ — ~22% at $K=5$, ~40% at $K=10$, **~99% at $K=100$**. At platform scale this matters a lot. The senior nuance: there are **two fundamentally different error-rate concepts**, controlled by different families of correction. Naming both and choosing between them deliberately is a staff signal.
+Testing many metrics or variants inflates false positives. Two control regimes: **FWER** (Bonferroni / Holm — bound the probability of *any* false positive; strict, for guardrails and regulatory decisions) vs **FDR** (Benjamini–Hochberg — bound the *expected fraction* of false discoveries among rejections; higher power, for exploratory metric sweeps). Production platforms run a **hybrid**: FWER-strict on a few critical guardrails, FDR across the long tail of secondary metrics.
 
-#### Family-Wise Error Rate (FWER)
-
-**Definition:** $\Pr(\text{at least one false positive across the entire family of } K \text{ tests})$.
-
-**Corrections targeting FWER:**
-- **Bonferroni** ($\alpha / K$) — the simple baseline, conservative; gets very strict as $K$ grows.
-- **Holm-Bonferroni** — sequential / step-down: sort p-values ascending and compare against $\alpha/K, \alpha/(K-1), \alpha/(K-2), \ldots$ until one fails. Strictly more powerful than Bonferroni while still controlling FWER.
-- **Hochberg / Hommel** — step-up variants; more powerful again but require independence or positive dependence.
-
-**Use FWER control when *one* false positive has catastrophic cost:**
-- Clinical drug approval (FDA requires strict FWER)
-- Security / fraud feature rollouts where a false positive exposes a vulnerability
-- Ad-quality launches where shipping a low-quality ad damages brand long-term
-- Cross-team launch decisions where the cost of misshipping is unrecoverable
-
-| Pro | Con |
-|---|---|
-| Strict guarantee on family-wise error | Power collapses as $K$ grows; at $K=20$ Bonferroni runs each test at $\alpha = 0.0025$ — you miss almost all real effects |
-
-#### False Discovery Rate (FDR)
-
-**Definition:** $\mathbb{E}\!\left[\dfrac{\text{false positives}}{\text{total discoveries called significant}}\right]$.
-
-If you reject 100 hypotheses and the FDR is 5%, you *expect* ~5 of those 100 to be false positives. Critically, FDR doesn't bound the *number* of false positives — it bounds their *proportion among discoveries*.
-
-**Corrections targeting FDR:**
-- **Benjamini-Hochberg (BH)** — sort p-values ascending; reject the largest $k$ such that $p_{(k)} \le (k/K) \cdot \alpha$. The modern industry default for tech.
-- **Benjamini-Yekutieli (BY)** — variant valid under arbitrary correlation structure; more conservative.
-- **Storey's q-value** — adaptive: estimates the proportion of true nulls $\hat\pi_0$ and corrects accordingly. More power when most nulls are actually false.
-
-**Use FDR control when discoveries are exploratory and a small fraction of false positives is acceptable:**
-- Feature ramps tracking many secondary metrics
-- A/B platforms running thousands of simultaneous experiments (LinkedIn ~41K concurrent — see §15.6)
-- Exploratory subgroup analyses, segment cuts
-- Scientific-discovery work (gene expression, fMRI, ML hyperparameter search)
-- Metric ranking on dashboards
-
-| Pro | Con |
-|---|---|
-| Retains power as $K$ grows; scales proportionally with the number of tests | Allows multiple false positives in large families; not appropriate when one false positive is unacceptable |
-
-#### Side-by-side
-
-| Aspect | FWER | FDR |
-|---|---|---|
-| Controls | $\Pr(\geq 1 \text{ FP})$ | $\mathbb{E}[\text{FP} / \text{discoveries}]$ |
-| Power at large $K$ | Collapses | Retains |
-| When to use | Each false positive is catastrophic | False positives are tolerable in aggregate |
-| Default correction | **Holm-Bonferroni** | **Benjamini-Hochberg** |
-| Industry tier | Launch-decision tier, regulated work | Platform-default for exploratory tier |
-
-#### The hybrid that production platforms actually run
-
-Mature experimentation platforms (Microsoft, LinkedIn, Netflix) tier metrics by the *cost of a false positive* and apply different control to each tier:
-
-| Tier | Cost of FP | $\alpha$ level | Correction within tier |
-|---|---|---|---|
-| Primary OEC | High | 0.05 | None (single test) or FWER if multiple OECs exist |
-| **Guardrails** (latency, error rate, churn) | **Very high** | **0.005** | **FWER (Holm-Bonferroni)** |
-| Secondary drivers | Moderate | 0.01 | BH (FDR) within tier |
-| Exploratory / segment cuts | Low | 0.05 | BH (FDR) within tier |
-
-This is the framing the Kohavi-Tang-Xu book recommends and what LinkedIn / Netflix actually run. **Document the tier protocol before the test starts** — choosing post-hoc invalidates the inference.
+> 📎 **Deep dive:** [FWER vs FDR — the procedures, the math, and the hybrid platforms actually run](deep-dives/multiple-comparisons.md).
 
 ### 8.3 Novelty and primacy effects
 
@@ -462,24 +371,11 @@ Mitigations:
 
 The aggregated treatment effect disagrees with — even *reverses* — every subgroup's effect. It needs two ingredients together: (a) segments with very different baseline rates, **and** (b) a treatment/control split that's *imbalanced across those segments* (from an assignment bug or organic traffic mix).
 
-**Worked example.** A new checkout flow, segmented by device. Treatment beats control *in each segment* yet loses *in aggregate* (verified):
-
-```
-            control   treat    diff
-Mobile      20.0%     22.0%    +2.0%
-Desktop     50.0%     52.0%    +2.0%
-AGGREGATE   40.0%     32.0%    -8.0%   ← reverses!
-```
-
-How? Treatment was disproportionately served to **Mobile** — the low-baseline segment (2000 treatment users vs 1000 control), while control skewed Desktop. The aggregate treatment rate is dragged down by its heavier mix of low-converting mobile traffic, *not* by the flow being worse. Aggregation confounds the *effect* with the *segment composition*.
+**Example (a device-segmented reversal).** A new checkout flow can beat control *in every device segment* yet lose *in aggregate* when treatment is disproportionately served to the low-baseline (mobile) segment — aggregation confounds the *effect* with the *segment composition*. → [worked example with the numbers](deep-dives/worked-examples.md#simpsons-paradox-example).
 
 **The specific fix — stratify and re-weight.** Compute the effect *within* each segment, then combine with weights equal to each segment's share of the **overall** population (not its per-arm share):
 
 $$\widehat{\text{ATE}} = \sum_s w_s\,\big(\bar y_{s,\text{treat}} - \bar y_{s,\text{control}}\big), \qquad w_s = \frac{n_s}{N}$$
-
-```
-stratified (population-weighted) effect = +2.0%   ← recovers the true effect
-```
 
 This is the post-stratification / Cochran–Mantel–Haenszel estimator. Two levels of fix:
 - **Prevention (best):** **stratified randomization** — assign 50/50 *within* each segment, so the split is balanced by construction and Simpson can't arise from allocation. CUPED / regression adjustment that controls for the segment buys the same protection.
@@ -615,18 +511,9 @@ When A/B wins:
 
 ### 10.5 Worked example — MAB beats A/B for a short-lived headline test
 
-*"You have 5 candidate headlines for a news story that's only hot for a day. A/B/n or bandit?"*
+*"5 headlines for a story that's hot for a day — A/B/n or bandit?"* A fixed even split wastes ~80% of impressions on non-winners while the story is still hot; Thompson Sampling shifts traffic to the leader as it learns. In simulation the bandit captures ~19% more clicks than the equal split — the **saved regret**. This is the canonical MAB-wins setting (§10.2): short shelf-life, direct per-impression opportunity cost, many arms.
 
-A fixed A/B/n splits traffic **evenly across all 5** for the whole test, so 80% of impressions go to non-winners — and by the time you'd "call" it, the story is cold. A bandit shifts traffic toward the leader *as it learns*, so most impressions land on the eventual winner *during the window that matters*. Simulation over 100k impressions, true CTRs `[3%, 4%, 5%, 4.5%, 3.5%]` (verified):
-
-```
-oracle (always the 5% headline): 5000 clicks
-Thompson Sampling              : 4782 clicks
-A/B/n equal split              : 4015 clicks
-→ MAB captured 767 extra clicks (~19% more) during the test itself
-```
-
-The 767 clicks are **saved regret** — the opportunity cost A/B/n pays to hold an even split. This is the canonical "MAB more suited" setting from §10.2: **the test period is where the reward is** (short shelf-life), **opportunity cost per losing impression is direct** (lost clicks/revenue), and **many arms** make even-splitting expensive. Contrast §10.3's "A/B wins" conditions — if you needed a clean per-headline causal CTR estimate to feed a downstream model, the bandit's adaptive allocation would break naive inference and you'd want the fixed split instead. Decision rubric: **§12**.
+> 📎 **Worked example:** [the simulation and the regret accounting](deep-dives/worked-examples.md#mab-vs-ab--short-lived-headline-test).
 
 ---
 
@@ -690,68 +577,9 @@ $$y = \beta_0 + \beta_X X + \beta_Y Y + \beta_{XY}\,(X\cdot Y) + \varepsilon$$
 
 ## 13. End-to-end worked example — Doordash extends free delivery to non-DashPass customers
 
-A full-stack staff-level answer to a real interview question.
+A full-stack staff answer to *"should Doordash extend free delivery to non-DashPass customers on orders > $15?"*, walked end to end: decide A/B is the right tool → frame a combined OEC (orders − subsidy weight) with DashPass-renewal as a tighter-$\alpha$ guardrail → user-level randomization, stratified, CUPED (~460K/arm vs 1.2M) → A/A + SRM + triggering on qualifying baskets → market-level interference check → pre-committed launch rubric → permanent 5% holdback for long-term LTV.
 
-**Decision.** Should we extend free delivery (currently a DashPass benefit) to non-DashPass customers on orders > $15 from select restaurants?
-
-### Step 0 — Decide if A/B is the right tool
-
-- Treatment is reversible, can target customer-level.
-- Effect plausibly detectable (industry priors: free-shipping campaigns move conversion +1–4%).
-- The decision is real: would launch only if marginal-customer profit beats the subsidy cost *and* DashPass renewals don't crater.
-
-A/B test is the right tool.
-
-### Step 1 — Frame the OEC
-
-- **Goal metric:** annualized customer LTV (too slow for the experiment).
-- **OEC (combined driver):**
-  $$
-  \text{OEC} = \alpha \cdot \Delta\text{orders/active customer} - \beta \cdot \Delta\text{subsidy spend/active customer}
-  $$
-  with weights $\alpha, \beta$ committed up front (e.g., $1 \text{ order} = \$X$ contribution, $1 \text{ subsidy } = \$Y$).
-- **Guardrails:** DashPass renewal rate (the cannibalization risk), customer complaints, dasher acceptance rate (could rise from larger orders).
-- **Counter metrics:** order frequency uplift split by past-30-day DashPass status; spend on the marginal order; restaurant participation.
-
-### Step 2 — Randomization & power
-
-- **Unit:** non-DashPass customer (we're targeting them).
-- **Stratify** by recent-90-day order frequency (heavy/light/lapsed) — CUPED-style covariate.
-- **Pre-period covariate:** prior-30-day orders/customer (CUPED). Expect 40–60% variance reduction.
-- **MDE:** 1.5% on combined OEC (smaller than that, the program doesn't beat its overhead).
-- **Sample size:** baseline orders/customer ~ 1.4, $\sigma \approx 1.8$, with CUPED $\sigma_{\text{eff}} \approx 1.1$.
-  - Without CUPED: $n \approx 16 \cdot 1.8^2 / (0.015 \cdot 1.4)^2 \approx 1.2M$ per arm.
-  - With CUPED: $\approx 460K$ per arm — about 1M total, feasible in ~2 weeks.
-- **Duration:** minimum 2 weeks (day-of-week + weekly novelty buffer); flag for primacy/novelty.
-
-### Step 3 — Trustworthy execution
-
-- **A/A test** on the OEC the week prior — confirm uniform p-distribution, calibrate variance for the power calc.
-- **SRM monitor** on assignment and on triggered-into-checkout.
-- **Triggering:** the change only affects checkout for orders ≥ $15; analyze on **triggered** customers (those who hit a qualifying basket).
-- **Guardrails** monitored daily with sequential bounds — auto-stop if DashPass renewals drop by > 2% with $p < 0.01$.
-
-### Step 4 — Interference
-
-- This is a one-sided demand change; supply-side spillover is small but non-zero (more demand pulls dashers).
-- Run in a few medium-sized markets first; cross-validate with a switchback design before national rollout.
-- Cross-reference with companion causal-inference notes for synthetic-DiD on the market-level rollout.
-
-### Step 5 — Analysis
-
-- Primary OEC test with CUPED + triggering.
-- DashPass renewals at $\alpha = 0.005$ (tighter — high-risk guardrail).
-- Subgroup analysis: heavy vs light non-DashPass users (Simpson's paradox check).
-- Decision rubric pre-committed: launch iff (OEC ≥ MDE) AND (DashPass renewal rate ≥ −0.5pp) AND (no guardrail breach).
-
-### Step 6 — Post-launch
-
-- 5% holdback maintained indefinitely on the non-DashPass population to measure long-term LTV (cannibalization vs net new value).
-- Quarterly re-evaluation; reverse experiment on a fresh cohort 6 months in.
-
-### The one-sentence senior version
-
-> *"Because non-DashPass free delivery has a real cannibalization risk and an OEC that depends on subsidy weight, I'd run a CUPED-adjusted user-randomized A/B with triggering on qualifying baskets, primary OEC = orders-minus-subsidy, DashPass-renewal as a tighter-$\alpha$ guardrail, two-week minimum duration, and a permanent 5% holdback to measure the long-term LTV signal that a short test can't see."*
+> 📎 **Worked example:** [the full six-step walkthrough](deep-dives/worked-examples.md#doordash-end-to-end--free-delivery-for-non-dashpass).
 
 ---
 
@@ -777,220 +605,21 @@ Most staff-level experimentation teams at consumer-tech companies have internali
 
 ### 15.1 Anytime-valid sequential testing — the deep dive
 
-The peeking problem (§8.1) has a modern, deployment-ready fix. Below is the **what / why / how / cost / when-not-to-use** treatment.
+Fixed-horizon p-values are invalid under continuous monitoring (the §8.1 peeking problem). **Anytime-valid** methods — mSPRT, always-valid p-values / confidence sequences, and group-sequential boundaries (O'Brien–Fleming, Pocock) — stay valid at *every* look by widening the boundary as data accrues, trading some peak power for the freedom to stop anytime.
 
-#### 15.1.1 The peeking trap, quantified
-
-A naive interim check inflates type-I error far past $\alpha$. The widely-cited Armitage-McPherson-Rowe (1969) calculation:
-
-| Number of equally-spaced peeks at $\alpha = 0.05$ | Actual Type-I error |
-|---|---|
-| 1 (the fixed-horizon test) | 0.050 |
-| 2 | 0.083 |
-| 5 | 0.142 |
-| 10 | 0.193 |
-| 100 | ~0.40 |
-| ∞ (continuous monitoring) | 1.0 (will eventually cross with prob 1) |
-
-So a team that "peeks every Friday" for 10 weeks is running tests at an *actual* level around 0.20 — four times the nominal. Anytime-valid inference closes this gap.
-
-#### 15.1.2 Three eras of sequential testing
-
-| Era | Method | Stopping flexibility | When you'd still use it |
-|---|---|---|---|
-| **1945 — Wald's SPRT** | Likelihood ratio against a *point* alternative $\theta_1$ | Continuous | When you genuinely know $\theta_1$ (almost never in product DS) |
-| **1977–79 — Group-Sequential** (Pocock; O'Brien-Fleming; Lan-DeMets α-spending) | Adjusted critical values at a *finite* number of pre-planned interim looks | Looks must be pre-specified | Clinical trials, where peeks happen at planned DSMB meetings — common in biostats; rare in tech |
-| **2015–22 — Anytime-Valid** (mSPRT / confidence sequences / e-values) | Likelihood-ratio mixture or supermartingale; valid at every $n$ | **Truly continuous, no pre-spec needed** | Modern tech A/B platforms (Optimizely, Adobe, Netflix, etc.) |
-
-The Group-Sequential family is rigorous but operationally clunky — the analyst must commit, at the start, to the *exact* schedule of interim looks. Anytime-valid removes that constraint.
-
-#### 15.1.3 The mathematical core — three equivalent framings
-
-**(a) Mixture Sequential Probability Ratio Test (mSPRT, Robbins 1970).** For Gaussian outcomes with known variance $\sigma^2$ and a $N(0, \tau^2)$ mixing distribution on the alternative $\theta$:
-
-$$
-\Lambda_n \;=\; \sqrt{\frac{\sigma^2}{\sigma^2 + n \tau^2}} \cdot \exp\!\left( \frac{n^2 \bar X_n^2 \, \tau^2}{2\sigma^2 (\sigma^2 + n \tau^2)} \right)
-$$
-
-Reject the null at any $n$ if $\Lambda_n > 1/\alpha$. By Doob's optional-stopping theorem applied to the likelihood-ratio martingale, this controls type-I error **uniformly across all stopping times**, including data-dependent ones.
-
-**(b) Confidence Sequence (Howard-Ramdas et al. 2021).** A sequence of intervals $(L_t, U_t)_{t \geq 1}$ such that
-
-$$
-\Pr\big(\theta \in (L_t, U_t) \;\;\text{for all } t \geq 1 \big) \;\geq\; 1 - \alpha
-$$
-
-— *simultaneous* coverage across the entire monitoring window. Dual to mSPRT: invert the test to get the interval. Howard et al. give nonparametric, time-uniform Chernoff-type bounds that work for sub-Gaussian, bounded, and sub-exponential outcomes without distributional assumptions on the data-generating process.
-
-**(c) E-value / Test Martingale (Shafer-Vovk-Wang 2021-24; Grünwald-de Heide-Koolen).** The modern unification. An e-process $E_n$ is a nonnegative process with $\mathbb{E}_{H_0}[E_n] \leq 1$ for all $n$. The test "reject if $\sup_n E_n \geq 1/\alpha$" is anytime-valid by Ville's inequality. Both mSPRT and confidence sequences are special cases of e-processes — and e-values **combine across experiments by simple multiplication**, which enables clean meta-analysis and FWER control across portfolios. This is the framing modern industry research is converging on.
-
-**(d) Design-based confidence sequences (Lindon, Malek, Bibaut et al. — Netflix 2022).** Construct the e-process under the *randomization distribution* induced by random assignment, rather than a model of the outcome. **Finite-sample valid with no distributional assumption.** Generalizes from i.i.d. samples to MAB, panel data, and time-series. This is what Netflix runs in production.
-
-#### 15.1.4 The cost of validity, quantified
-
-A fixed-horizon 95% CI for a mean has width $\sim 1.96 \sigma / \sqrt n$. The anytime-valid analog has width
-
-$$
-\sim \sigma \sqrt{2 \log\log n \, / \, n} \cdot \big(\text{constant of order 1}\big)
-$$
-
-— the law of the iterated logarithm rate, with a $\sqrt{\log\log n}$ inflation. Numerically, what this costs:
-
-| $n$ | $\log\log n$ | Width inflation vs fixed-horizon | Sample-size penalty for same width |
-|---|---|---|---|
-| 100 | 1.53 | ~1.27× | ~1.6× |
-| 1,000 | 1.93 | ~1.40× | ~2.0× |
-| 10,000 | 2.22 | ~1.50× | ~2.3× |
-| 1,000,000 | 2.63 | ~1.64× | ~2.7× |
-
-So a "**~2× sample-size penalty**" is the right interview number — independent of the specific algorithm. Compare with peeking: at 10 looks, peeking inflates Type-I from 0.05 to 0.19; the *real* cost of naive peeking (the inflation in false-positive launches) is far worse than the 2× cost of doing it correctly.
-
-**The Optimizely empirical result** (Johari, Koomen, Pekelis, Walsh 2017/2022, deployed across hundreds of thousands of experiments): the *median* always-valid experiment stops at roughly **30% of the fixed-horizon sample size**, because most experiments have effects large enough or small enough to detect well before the planned $n$. The 2× per-experiment penalty is way more than recovered by the portfolio-level early stopping.
-
-#### 15.1.5 Decision procedures — what "stop early" actually means
-
-Three distinct early-stop conditions:
-
-| Condition | Statistical rule | Business action |
-|---|---|---|
-| **Efficacy stop** | Lower bound of CI exceeds zero (or the launch threshold) | **Launch** |
-| **Futility stop** | Upper bound of CI below the practical MDE | **Don't launch — effect too small to matter** |
-| **Safety stop / harm stop** | CI excludes zero in the wrong direction, OR a guardrail metric's CI breaches the no-go threshold | **Kill the experiment, revert** |
-
-A well-designed always-valid system **monitors all three simultaneously** and stops on whichever fires first. The Truncated mSPRT line of work (e.g. Lin et al. 2025) specifically embeds practical-significance thresholds into the test so that "stop for futility" is a first-class decision rather than an afterthought.
-
-**Anti-pattern:** running anytime-valid analysis but only checking the efficacy condition. You lose the main industry win — early kill of underperforming experiments — and revert to "ran the full horizon anyway."
-
-#### 15.1.6 Industry deployments
-
-| Company | Method | Notable result |
-|---|---|---|
-| **Optimizely** | mSPRT with Gaussian mixing (Johari et al. 2017/22) | Deployed across hundreds of thousands of experiments; median stop at ~30% of fixed-horizon $n$ |
-| **Netflix** | Design-based confidence sequences (Lindon et al. 2022) | Sign-up-page experiment with 30k potential customers, stoppable on day 1 before 100 obs |
-| **Adobe** | Asymptotic confidence sequences (Maharaj et al. 2023) | Thousands of Adobe Experience Platform experiments; integrates with sample-size calcs and lift metrics |
-| **LinkedIn / Meta / Microsoft** | Hybrid: GST-style boundaries for guarded experiments + anytime-valid for routine ones | Most large-scale platforms have moved to some form of anytime-valid for the bulk of experiments |
-
-#### 15.1.7 When *not* to use anytime-valid
-
-| Situation | Why fixed-horizon wins |
-|---|---|
-| **Tiny experiments** (< a few hundred units total) | The $\log\log n$ penalty bites hard at small $n$; you'd pay 2.5× for very little flexibility benefit |
-| **Cross-team launch decision frozen in advance** | A pre-committed launch rubric (§13) is itself a fixed-horizon design — adding sequential machinery confuses governance |
-| **Regulator / auditor scrutiny** | Some regulators expect a fixed-horizon analysis; anytime-valid is harder to defend in a compliance review |
-| **Effects you genuinely can't detect early** | If the metric is so noisy or the effect so dilute that you'll only see signal at the full horizon, anytime-valid doesn't help and you pay the 2× cost for nothing |
-| **You don't have engineering support for continuous monitoring** | If "peeking" means a person looking at a dashboard once a week, group-sequential is operationally simpler and gives most of the benefit |
-
-#### 15.1.8 Staff phrasing
-
-> *"For experiments where opportunity cost is high and effects might be large, I'd run an anytime-valid sequential test — mSPRT for parametric outcomes or a design-based confidence sequence for finite-sample validity à la Netflix's published approach. The CI width inflates by $\sqrt{\log\log n}$ — about a 2× sample-size penalty per experiment — but the median experiment in the Optimizely deployment stops at ~30% of the fixed-horizon n, so portfolio velocity wins. I'd monitor all three of efficacy, futility, and guardrail-safety conditions simultaneously, with pre-committed launch thresholds. The wrong answer is 'run anytime-valid but only check efficacy' — you give up the main industrial benefit."*
-
-#### 15.1.9 Further reading
-
-- [Always Valid Inference: Continuous Monitoring of A/B Tests (Johari, Koomen, Pekelis, Walsh — Optimizely / Stanford, 2015→2022 OR)](https://arxiv.org/abs/1512.04922) — the foundational industrial paper; mSPRT formulation, Optimizely deployment.
-- [Time-uniform, nonparametric, nonasymptotic confidence sequences (Howard, Ramdas, McAuliffe, Sekhon, Annals of Statistics 2021)](https://arxiv.org/abs/1810.08240) — the modern theoretical foundation.
-- [Design-Based Confidence Sequences (Lindon, Malek, Bibaut et al. — Netflix 2022)](https://arxiv.org/abs/2210.08639) — randomization-based finite-sample validity (the §15.1.3(d) construction).
-- [Anytime-Valid Confidence Sequences in an Enterprise A/B Testing Platform (Maharaj et al. — Adobe 2023)](https://arxiv.org/abs/2302.10108) — Adobe deployment with sample-size and lift handling.
-- [Sequential A/B Testing Keeps the World Streaming Netflix (Part 1: Continuous Data)](https://netflixtechblog.com/sequential-a-b-testing-keeps-the-world-streaming-netflix-part-1-continuous-data-cba6c7ed49df) — Netflix Tech Blog operational walkthrough.
-- [E-values: Calibration, Combination and Applications (Vovk-Wang, Annals 2021)](https://arxiv.org/abs/1912.06116) — the e-value unifying framework.
-- [Truncated mSPRT for Practical Significance (Lin et al. 2025)](https://arxiv.org/abs/2509.07892) — embedding the practical-significance threshold directly in the test.
+> 📎 **Deep dive:** [the peeking math, three equivalent framings, the cost of validity, decision procedures, and industry deployments](deep-dives/sequential-testing.md).
 
 ### 15.2 Regression-adjusted sequential testing — CUPED meets anytime-valid
 
-The bigger insight: variance reduction (§5.4 CUPED) and anytime-valid sequential testing **compose**. Netflix's "Anytime-Valid Linear Models" line of work shows that the standard regression-adjusted estimator (subtract $\theta(X - \bar X)$ from the outcome) plugs into a confidence-sequence framework without breaking validity. You get the $\rho^2$ variance reduction *and* the peeking-allowed flexibility in one estimator.
+CUPED-style regression adjustment composes with anytime-valid inference: adjust the outcome with a pre-period covariate, then run the sequential test on the residual — variance reduction and continuous monitoring at once.
 
-Combined effect: a CUPED reduction of 50% plus a 1.5× anytime-valid penalty is still a **net ~33% sample-size reduction** over fixed-horizon naive analysis — with continuous monitoring.
+> 📎 **Deep dive:** [regression-adjusted sequential testing](deep-dives/sequential-testing.md#152-regression-adjusted-sequential-testing--cuped-meets-anytime-valid).
 
 ### 15.3 Interleaving — the deep dive on ranker experiments
 
-For ranker / recommender experiments, **interleaving** is the dominant industry technique. It compares two rankers by mixing their outputs into a *single* ranked list shown to a single user, then attributes credit per click to whichever ranker contributed the item. Each user is their own paired control — variance reduction is enormous because **between-user variance, which usually dominates, is removed**.
+**Interleaving** blends two rankers' results into one list shown to one user and measures which side wins the clicks — each user is their own control, so between-user variance vanishes and it's **10–100× more sensitive** than a between-user A/B for ranking quality. Use it as a fast pre-screen, then confirm winners with a standard A/B.
 
-The reported speedups vs A/B testing are dramatic: **50× at Airbnb** (Bi et al. 2025, confirmed with 29 paired A/B + interleaving experiments), **60× at Amazon** (Bi et al. 2022), and Netflix has reported similar two-stage architectures for years.
-
-#### 15.3.1 The three classical interleaving algorithms
-
-| Algorithm | Construction | Credit attribution | Bias note |
-|---|---|---|---|
-| **Balanced Interleaving (BI)** — Joachims 2003 | Alternate items from rankers A and B so the top-$k$ list of $I$ always contains the top-$k_A$ from A and top-$k_B$ from B with $\|k_A - k_B\| \leq 1$ | A click is credited to *both* rankers if the item appears (above a threshold) in both lists. Winner = more clicks | **Biased on shift-by-one permutations:** if A = $[a,b,c,d]$ and B = $[b,c,d,a]$, BI's mix can give one ranker artificially more credit positions |
-| **Team Draft (TD)** — Radlinski-Kurup-Joachims 2008 | Toss a coin per "round." The winning team picks its top remaining item, then the other team picks its top. Each item in the merged list is tagged with its team | Click → +1 for that item's team. Winner = team with more total clicks | **Mild bias on shift-by-one** but minimal in practice (Hofmann 2013 found it "negligible") |
-| **Probabilistic Interleaving (PI)** — Hofmann et al. 2011 | Softmax both rankers' lists into probability distributions; sample items into $I$ stochastically | A click contributes credit summed over **all draft sequences** that could have produced this $I$ — unbiased but expensive to compute | **Unbiased** in theory, but visibly degrades the user experience because rankings are randomized; high system complexity |
-
-**The 2 things to memorize:** (a) **Team Draft** is the dominant production choice — simple, low overhead, near-unbiased; (b) **Probabilistic Interleaving** is the unbiased gold standard but rarely shipped because it sacrifices UX.
-
-#### 15.3.2 The statistical test — sign test on user preferences
-
-The within-user paired structure naturally suggests a sign test:
-
-For each user $i$ in the interleaving cohort, let $\tau_i = (\text{clicks team A}) - (\text{clicks team B})$. Then:
-
-$$
-\hat\tau_{\text{pref}} \;=\; \frac{1}{N} \!\left[\sum_i \mathbf{1}\{\tau_i > 0\} - \sum_i \mathbf{1}\{\tau_i < 0\}\right]
-$$
-
-The p-value is from a **proportion test** (equivalently, a binomial sign test) on the counts of A-preferring vs B-preferring users. Under the null of no preference difference, the expected proportion of A-preferring users is 0.5.
-
-#### 15.3.3 Bias / fidelity gotchas (staff-level depth)
-
-| Failure mode | What it looks like | Mitigation |
-|---|---|---|
-| **Shift-by-one** | A and B differ only by a small reordering; classical methods can spuriously prefer one | Either treat ties within an "equal zone" of $\alpha > 0$ positions as no-preference, or use Probabilistic Interleaving |
-| **Set-level optimization** | Treatment ranker optimizes *diversity*, *fairness*, or another set-level objective; interleaving mixes the lists and breaks the optimization | Don't interleave — use A/B. (Airbnb specifically calls this out as a case where interleaving misled them.) |
-| **Position bias** | If construction is asymmetric (e.g., team A always gets the top slot), clicks skew | Coin-toss the first slot per user / session; *empirically validate impression balance* every experiment |
-| **Shared real-time features** | If both rankers consume signals from the *same* user (e.g., updated preferences from prior session), the stronger ranker freerides on signals "earned" by the weaker | Less of a problem for interleaving (both rankers see identical context within a pair) but a real failure mode for counterfactual evaluation — see §15.3.5 |
-| **Conversion sparsity** | The reward signal is bookings/purchases, not clicks → very sparse → low statistical power | Use a hybrid metric (clicks + downstream); fall back to A/B if the conversion event is too rare even after the speedup |
-
-**The Airbnb empirical practice:** every experiment runs an unbiasness sanity check, e.g., *"Listings shown: 0.00% Δ (p=0.91); shown first: −0.01% Δ (p=0.85)"* — confirming impression and position symmetry between teams. **Treat this as the SRM of interleaving** — if it fails, the experiment is invalid.
-
-#### 15.3.4 Modern industry variations
-
-- **Competitive Pair Team Draft (Airbnb 2025).** A single coin flip per search decides which ranker draws first (rather than a coin per round). Reduces noise in the team-draft mechanic and makes impression balance trivially auditable. Reports ~50× speedup, 82% directional agreement with paired A/B tests, $\rho = 0.6$ correlation in effect size across 29 experiments.
-- **BI + Inverse Propensity Weighting (Amazon, Bi et al. 2022).** Reweights credit by the position-occupancy probability per ranker to debias BI. ~60× speedup; less extensible than CP-TD.
-- **Counterfactual evaluation (Airbnb hybrid).** Don't interleave — show *one* randomized ranker per search and *compute* the counterfactual offline using both lists. **No UX disruption** since the user sees a normal page. Pairs with TD on different traffic to validate. ~15–100× speedup depending on the metric (the $\tau_g$ direct-decomposition metric hits ~100×).
-- **Multileaving (>2 rankers).** Theory generalizes draft mechanics to $K$ teams (Schuth et al. 2014, Brost-Cox-Seldin-Stone 2016). Practical adoption is rare because per-team statistical power degrades; most teams just pair-compare a handful of candidates in parallel.
-
-#### 15.3.5 When interleaving is the wrong tool
-
-| Situation | Why interleaving fails | Use instead |
-|---|---|---|
-| The candidate rankers score *different items* (e.g., new content surface that the control doesn't index) | The merged list can't be constructed | A/B at the user level |
-| You need a **long-term outcome** (retention, LTV) | Interleaving measures within-session preference only | A/B (almost always two-stage: interleaving prune → A/B confirm) |
-| The change is to **set-level structure** (a layout change, a diversity constraint, a fairness re-ranking) | Interleaving violates the set property | A/B at the user level |
-| The metric is **highly sparse** (conversion only, $< 0.5\%$ rate) | Speedup not enough to recover statistical power | A/B with CUPED, or hybrid click + conversion proxy |
-| You're under **regulatory or audit scrutiny** | Interleaving has no analog of "this group saw treatment, that group saw control" → harder to explain | A/B for the on-record decision; interleaving as upstream R&D |
-
-#### 15.3.6 The two-stage architecture in practice
-
-The canonical Netflix / Airbnb pipeline:
-
-```
-50 candidate rankers from research
-      |
-      v
-+-----+-----+
-| INTERLEAVING (1 week, 50× variance reduction)
-| Sign-test ranking; kill the bottom 90%
-+-----+-----+
-      |
-      v
-5 surviving rankers
-      |
-      v
-+-----+-----+
-| A/B TEST (4-8 weeks)
-| Long-term engagement, retention, monetization
-| Anytime-valid sequential CI for early stop (§15.1)
-+-----+-----+
-      |
-      v
-1 launched ranker
-```
-
-The total time from research idea → production launch is on the order of 6–10 weeks for a ranker that wins both stages — versus several quarters if every candidate had to go through a full A/B alone.
-
-#### 15.3.7 Staff phrasing
-
-> *"For ranker work I'd run two stages. Stage 1: interleaving — Team Draft with a per-search coin flip and a unbiasness sanity check on impression balance every experiment. That gives ~50× variance reduction so I can compare 20–50 rankers in a week and prune to the top handful by sign-test on user-level preferences. Stage 2: a standard A/B on the survivors for the long-term engagement and retention signal, ideally with anytime-valid sequential testing so we can stop early on clear wins. The two-stage pipeline cuts research-to-launch from quarters to weeks — the win is portfolio velocity, not per-experiment efficiency."*
-
-**Citations:** [Innovating Faster on Personalization Algorithms at Netflix Using Interleaving](https://netflixtechblog.com/interleaving-in-online-experiments-at-netflix-a04ee392ec55) (Netflix Tech Blog); [Harnessing the Power of Interleaving and Counterfactual Evaluation for Airbnb Search Ranking](https://arxiv.org/abs/2508.00751) (Bi et al. 2025); [Optimized Interleaving for Online Retrieval Evaluation](https://www.microsoft.com/en-us/research/wp-content/uploads/2013/02/Radlinski_Optimized_WSDM2013.pdf.pdf) (Radlinski-Craswell, WSDM 2013); [An Improved Multileaving Algorithm for Online Ranker Evaluation](https://arxiv.org/abs/1608.00788) (Brost et al. 2016).
+> 📎 **Deep dive:** [the classical algorithms, the preference (sign) test, fidelity gotchas, and the two-stage interleaving→A/B architecture](deep-dives/interleaving.md).
 
 ### 15.4 Quantile metrics and the quantile bootstrap
 
@@ -1007,266 +636,15 @@ Mechanism:
 
 ### 15.5 Heterogeneous treatment effects in production — the deep dive
 
-A staff-level treatment of CATE estimation in production. The ATE answers *"does this work on average?"*; the CATE (Conditional Average Treatment Effect) answers *"who does this work for?"* The latter is what drives **targeting, personalization, and policy** decisions. The literature has matured rapidly between 2016 and 2025, and the production stack at LinkedIn / Uber / Booking / Netflix has converged on a small set of methods worth knowing.
+The ATE hides who the treatment helps or hurts. **CATE** methods estimate per-segment effects: meta-learners (S/T/X/R), causal forests (with the honesty property), and Bayesian Causal Forest for small effects in noise; evaluate with Qini / AUUC and calibration, then turn CATE into a targeting *policy*. Mind the marginal-distribution caveat and the multiplicity of segment tests.
 
-#### 15.5.1 The CATE-vs-ATE gap — when ATE alone is incomplete
-
-Two scenarios force you off the ATE:
-
-| Scenario | Why CATE matters | Example |
-|---|---|---|
-| **Targeting under a budget** | The cost of treating is non-trivial; you want to treat only the subset that benefits enough to justify the cost | "Send a $5 promo to only the customers who'd be moved by it" |
-| **Diagnosing a null** | A null aggregate effect can mask a large positive in one subgroup + a large negative in another | "Feature change is neutral overall, but power users love it and casual users hate it" |
-| **Personalization** | Different users should see different treatments | "Show ranker A to new users, ranker B to repeat users" |
-| **Policy learning** | The final decision is a function: who gets which treatment | "Decide who gets the upgrade prompt at all" |
-
-The **distinction that confuses juniors:** CATE is the *estimand*; targeting / personalization / policy are the *decisions*. CATE estimation is a means; rarely is it itself the deliverable.
-
-#### 15.5.2 The four meta-learners — S, T, X, R
-
-The first frontier (Künzel-Sekhon-Bickel-Yu PNAS 2019). Each "meta-learner" wraps any ML model into a CATE estimator.
-
-| Learner | Construction | $\hat\tau(x)$ formula | When it wins |
-|---|---|---|---|
-| **S-learner** (Single) | One model $\hat\mu(x, T)$ fit on combined data | $\hat\tau(x) = \hat\mu(x, 1) - \hat\mu(x, 0)$ | Simple; works when $T$ has strong predictive power; often surprisingly strong empirically |
-| **T-learner** (Two) | Two models $\hat\mu_T(x)$ and $\hat\mu_C(x)$ fit separately on treated and control | $\hat\tau(x) = \hat\mu_T(x) - \hat\mu_C(x)$ | When treatment changes the response function shape; data plentiful |
-| **X-learner** (Cross) | T-learner first, then *impute* counterfactuals on each side, then fit $\hat\tau_T$ and $\hat\tau_C$, combine with propensity weights | $\hat\tau(x) = g(x) \hat\tau_C(x) + (1 - g(x)) \hat\tau_T(x)$ | Highly imbalanced treatment / control (e.g. 5% treated, 95% control) |
-| **R-learner** (Robinson-style) | Doubly orthogonal: residualize $Y$ and $T$ on $X$, then fit CATE on residuals weighted by $(T - \hat\pi(X))^2$ | Best general-purpose; theoretically grounded via orthogonal moment | Default when you need defensible CIs and have enough data |
-
-**Empirical note** (Belkov et al. 2024 large-scale comparison on the Criteo Uplift v2.1 dataset, 14M rows): on imbalanced (85/15) marketing data, **S-learner with LightGBM achieved the highest Qini coefficient (0.376)**, with the top 20% of CATE-sorted customers capturing **77.7% of incremental conversions**. The X-learner did *not* outperform S-learner here — a finding consistent with finite-sample regularization effects. **Don't assume the most theoretically elegant learner wins on your data.**
-
-#### 15.5.3 Causal forests and the "honesty" property
-
-Wager-Athey (JASA 2018) — the gold standard for tree-based CATE estimation. A causal forest is a random forest where each tree estimates the CATE in its leaves rather than the response. **Honesty** is the property that the data used to *partition* a tree is disjoint from the data used to *estimate* the leaf treatment effect. This double-sample property is what gives causal forests their **pointwise asymptotic normality and consistent variance estimates** — you get a CI for the CATE at every $x$, not just a point estimate.
-
-**Generalized Random Forests** (Athey-Tibshirani-Wager Annals 2019) extend this to any moment-condition estimator — CATE, IV, quantile, etc. — all in one framework. The reference implementation is the **`grf`** R package, also available in Python via econml.
-
-**When causal forests win:**
-- High-dimensional $X$ with nonlinear effect modifiers
-- Need uncertainty quantification per individual (not just population-level CATE)
-- Don't want to hand-pick interactions
-
-**When they don't win:**
-- Treatment effect is small relative to noise → BCF often does better (§15.5.4)
-- Very high-dimensional sparse settings where DR-learner with elastic-net beats trees
-
-#### 15.5.4 Bayesian Causal Forest (BCF) — for small effects in noise
-
-Hahn-Murray-Carvalho (Bayesian Analysis 2020). A BART-based estimator that uses the **propensity score as a feature**, which mitigates **regularization-induced confounding (RIC)** — the bias that arises when ML regularization shrinks the treatment effect toward zero in regions of high propensity imbalance.
-
-**When BCF beats causal forests:**
-- Treatment effect is small relative to outcome noise
-- Strong selection bias / observational data with confounding
-- You want a full posterior on the CATE (not just CI)
-
-Implementation: `bcf` R package, `bartpy` for the Python BART backend.
-
-#### 15.5.5 Evaluating CATE — Qini curves, AUUC, calibration
-
-The hardest part of CATE work isn't the model — it's the evaluation. Three standard tools:
-
-**(a) Qini curve.** Sort users by predicted CATE in descending order; for each percentile $p$, plot:
-
-$$
-Q(p) = \sum_{i \in \text{top-}p\%} Y_i \cdot \mathbf{1}\{T_i=1\} - \frac{N_T(p)}{N_C(p)} \sum_{i \in \text{top-}p\%} Y_i \cdot \mathbf{1}\{T_i=0\}
-$$
-
-A perfect model's curve rises steeply then plateaus; a random model's is a diagonal. The **Qini coefficient** is the area between the model curve and the random diagonal — analogous to ROC's AUC.
-
-**(b) AUUC** (Area Under the Uplift Curve) — alternative aggregation closely related to Qini; the two are typically reported together.
-
-**(c) Calibration plot.** Bin observations by predicted CATE decile; compute the empirical ATE in each bin (treated mean − control mean); compare to predicted. **A well-calibrated CATE model has the calibration line on the 45° diagonal.** Imai-Ratkovic (2013) formalize this with the **GATES** statistic.
-
-**The senior practice:** report all three. Qini + AUUC for ranking quality; calibration plot for the magnitude. Models that win on Qini but have poor calibration are useful for *targeting* (the *order* is right) but dangerous for *cost-benefit decisions* (the *magnitudes* are wrong).
-
-#### 15.5.6 From CATE to policy — the policy-learning frontier
-
-The decision isn't "what's the CATE?" but "who do we treat?" Athey-Wager (Econometrica 2021) develops **policy learning** as a separate estimand: find the function $\pi: X \to \{0, 1\}$ that maximizes expected value under a budget constraint.
-
-**Two facts that surprise people:**
-
-1. **Policy learning is sometimes easier than CATE estimation.** You don't need the *magnitude* of the treatment effect everywhere, just the *sign* at the decision boundary. A simple policy "treat top-30% by predicted CATE" often does almost as well as a sophisticated policy tree, with much less variance.
-
-2. **A poor CATE model can support a good policy.** Even if $\hat\tau(x)$ is biased and noisy, its *ranking* of users might still pick the right top-$K$ for targeting. The Belkov et al. result above (top 20% capture 77% of incremental conversions) is this phenomenon.
-
-**The Multi-Armed Qini (MAQ)** package (Sverdrup-Wager 2024) extends Qini-style evaluation to multi-arm and budget-constrained targeting policies. For multi-treatment problems (e.g. choosing one of N promotional offers per user), this is the modern standard.
-
-#### 15.5.7 Industry deployment patterns
-
-| Pattern | Industry example |
-|---|---|
-| **Promo targeting under a budget** | Uber Eats, DoorDash, Lyft — predict who'd convert with vs without a $5 promo; spend the budget on the highest-CATE users |
-| **Feature on/off personalization** | Netflix — which users get the new player UI; LinkedIn — which members get InMail-from-recruiters |
-| **Recommendation responsiveness** | Pinterest, Netflix — which users have CATE-high response to ranker changes; allocate experimentation traffic accordingly |
-| **Pricing personalization** | Booking.com, Airbnb — surface-level price-segment differentiation (with regulatory caveats!) |
-| **Notification frequency** | Meta, LinkedIn — how many notifications maximize each user's long-term engagement without churning |
-| **Treatment ranking** | Netflix's published caveat (see 15.5.8) — when ranking treatments by CATE, the marginal-distribution issue bites |
-
-#### 15.5.8 The marginal-distribution caveat (Netflix)
-
-The Netflix-published gotcha: when ranking *treatments* (not subgroups) by their CATE, the naive ranking is biased if the treatments have different marginal distributions on the running covariate. Concretely: treatment A is mostly applied to users with feature $x_1$, treatment B to users with feature $x_2$. The CATE of A averaged over its actual recipients reflects the $x_1$ population; B's averages over the $x_2$ population — so comparing them isn't an apples-to-apples ranking.
-
-**The Netflix fix:** use methods that explicitly upweight effects for users whose treatment assignment is most *unpredictable* given the covariates — i.e., focus on the **overlap region** where both treatments are plausible. This is conceptually the same as the overlap / propensity-trimming discipline in causal inference, applied at the treatment-comparison level.
-
-#### 15.5.9 When NOT to use CATE
-
-Five honest staff-level cases where CATE doesn't help:
-
-| Situation | Why CATE fails |
-|---|---|
-| **Sample size too small for the effect size** | CATE estimation needs *much* more data than ATE — heuristically $4{-}10\times$ for similar precision per subgroup |
-| **Treatment effect is genuinely homogeneous** | If $\tau(x) \approx \bar\tau$ for all $x$, you're fitting noise; report the ATE |
-| **High-leverage subgroups** | Tiny subgroups with extreme CATE estimates dominate the Qini curve; check for n ≥ ~100 per leaf |
-| **Calibration drift** | CATE estimates degrade over time; need monthly re-fitting and calibration monitoring in production |
-| **Predictive heterogeneity ≠ causal heterogeneity** | Users with high *baseline* outcomes aren't necessarily users with high *treatment effect*. A junior mistake is fitting a CATE model that's really just predicting $Y(0)$ |
-
-#### 15.5.10 Staff phrasing
-
-> *"For CATE in production I'd start with the R-learner — it's the doubly-robust default with the cleanest CIs, but I'd also fit a causal forest from grf for the per-individual uncertainty quantification and an S-learner LightGBM as the empirical baseline since Belkov et al. show it surprisingly often wins on imbalanced marketing data. Evaluation is Qini coefficient and AUUC for ranking quality plus a calibration plot to check the magnitudes — a model can win on Qini but have miscalibrated magnitudes, which is dangerous for cost-benefit decisions. The framing trap is conflating CATE with policy: the deliverable is usually 'who do we treat under a budget?', and a simple top-K-by-CATE policy often does almost as well as a learned policy tree. The Netflix marginal-distribution caveat applies whenever you're ranking treatments, not subgroups."*
-
-#### 15.5.11 Further reading
-
-- [Recursive partitioning for heterogeneous causal effects (Athey-Imbens, PNAS 2016)](https://arxiv.org/abs/1504.01132) — the first causal-tree paper.
-- [Estimation and Inference of Heterogeneous Treatment Effects using Random Forests (Wager-Athey, JASA 2018)](https://arxiv.org/abs/1510.04342) — the causal forest paper with honesty + asymptotic CIs.
-- [Metalearners for estimating heterogeneous treatment effects using machine learning (Künzel-Sekhon-Bickel-Yu, PNAS 2019)](https://arxiv.org/abs/1706.03461) — the S/T/X-learner family.
-- [Quasi-oracle estimation of heterogeneous treatment effects (Nie-Wager 2017/2021)](https://arxiv.org/abs/1712.04912) — the R-learner.
-- [Generalized Random Forests (Athey-Tibshirani-Wager, Annals 2019)](https://arxiv.org/abs/1610.01271) — the `grf` framework.
-- [Bayesian Regression Tree Models for Causal Inference (Hahn-Murray-Carvalho, Bayesian Analysis 2020)](https://arxiv.org/abs/1706.09523) — Bayesian Causal Forest.
-- [Policy Learning with Observational Data (Athey-Wager, Econometrica 2021)](https://arxiv.org/abs/1702.02896) — policy learning as a separate estimand.
-- [A Large-Scale Empirical Comparison of Meta-Learners and Causal Forests (Belkov et al. 2024)](https://arxiv.org/abs/2604.06123) — Criteo Uplift v2.1 14M-row benchmark; the source of the S-learner Qini = 0.376 result.
-- [Multi-Armed Qini for budget-constrained targeting (Sverdrup-Wager 2024)](https://arxiv.org/abs/2403.11116) — the multi-arm policy-evaluation framework.
+> 📎 **Deep dive:** [meta-learners, causal forests, CATE evaluation, policy learning, and deployment patterns](deep-dives/heterogeneous-treatment-effects.md).
 
 ### 15.6 Multi-experiment platforms — the deep dive
 
-At scale, experimentation isn't an experiment, it's a *platform*. LinkedIn runs **~41,000 concurrent A/B tests** on **700M+ members** with **35 trillion variant evaluations per day**; Google, Microsoft, Booking.com, and Meta operate at similar magnitudes. Naive A/B at scale falls apart along three axes — traffic exhaustion, interaction confounding, and operational risk. This subsection walks the technical and operational solutions.
+Running thousands of concurrent experiments needs infrastructure, not just statistics. **Layered overlapping** designs (Google / Tang KDD'10) let each user join one experiment per layer; **hash-based assignment** (`hash(unitId · layerSalt) mod N`) gives stable, independent, reproducible bucketing; **mutual exclusion** isolates experiments that would interact while orthogonal layers maximize throughput — plus carryover / pre-experiment bias controls and platform governance.
 
-#### 15.6.1 The scale problem
-
-A platform that ran each experiment as a fresh 50/50 user split would saturate available traffic immediately. Three failure modes:
-
-| Failure mode | Symptom |
-|---|---|
-| **Traffic exhaustion** | After ~5–10 simultaneous mutually-exclusive 50/50 experiments, no more headroom |
-| **Interaction confounding** | Each user is in many experiments at once; if interactions are non-zero, effect estimates are biased |
-| **Operational risk** | Without governance, a single bad experiment can take down a critical surface; without traceability, you can't tell which experiment caused a metric move |
-
-#### 15.6.2 Three architectures, in order of sophistication
-
-| Architecture | How traffic is allocated | When you'd use it |
-|---|---|---|
-| **Single-thread** | One experiment at a time, full traffic | Tiny startups; not viable at scale |
-| **Mutual exclusion (multi-thread, non-overlapping)** | Each user in *at most one* experiment per surface | Pre-2010 default; still used for high-stakes UX changes |
-| **Layered overlapping** (Google/Tang KDD'10; LinkedIn T-REX) | Hash-based assignment makes most experiments orthogonal; users in many simultaneously | Modern platform default |
-
-#### 15.6.3 Layered overlapping — the Google/Tang KDD'10 framework
-
-The dominant industry architecture (Tang, Agarwal, O'Brien, Meyer — Google KDD 2010) introduces a three-level hierarchy:
-
-```
-Domain                    e.g. "Web Search"  -- a surface / app boundary
-└── Layer                 e.g. "ranker"      -- a related-changes bucket
-    └── Experiment        e.g. "ranker_v17"  -- one specific A/B
-```
-
-Three rules give the architecture its power:
-
-1. **Within a layer, experiments are mutually exclusive.** A user is in at most one experiment per layer. This is the *cost*.
-2. **Across layers, experiments are orthogonal.** A user can be simultaneously in many experiments, one per layer. Independent random assignment per layer ensures expectations are unaffected by other layers. This is the *win*.
-3. **A layer is owned by a team / system.** "Ranker" layer owned by ranking; "UI" layer owned by frontend; etc. Within-layer mutex is operationally natural (only one ranker active per user at a time).
-
-Two extensions worth knowing:
-
-- **Launch layers** — once an experiment ships to 100%, it moves to a separate "launched" layer so future experiments can layer underneath it without re-randomizing. Critical for incremental builds on top of shipped winners.
-- **Biased layers / segment layers** — when an experiment must target a specific population (premium members, mobile-only), the layer is "biased" — assignment isn't uniform on the full traffic. Analysis must account for the targeting cohort.
-
-#### 15.6.4 Hash-based assignment at scale — the LinkedIn formula
-
-The serving path needs to evaluate variant assignment **for every request, for every experiment a user is in**. LinkedIn reports up to **1M cache reads/sec** under an RNG approach — unsustainable. The hash-based fix (deployed in LinkedIn's T-REX):
-
-$$
-\text{HASH}(\text{salt})(\text{member\_id}) \;=\; \text{FCrypt}\big(\text{concat}(\text{prefix}(\text{salt}, 4),\, \text{bytes}(\text{member\_id}))\big)
-$$
-
-Normalize the output to $[0, 1)$ by dividing by $F_{\max}$. The salt is the **experiment ID** (or the layer ID — same idea). Then:
-
-```
-hash_value = HASH(salt)(member_id) / F_MAX  ∈ [0, 1)
-variant    = lookup_variant(hash_value)      # e.g. [0, 0.5) -> A, [0.5, 1) -> B
-```
-
-Three properties this gives:
-
-- **Stateless.** No cache, no RPC, no database read on the hot path. Computed in-process.
-- **Sticky.** Same `(salt, member_id)` always produces the same hash → same variant assignment across requests, sessions, devices.
-- **Orthogonal across experiments.** Different salts produce independent hashes (verified by chi-squared independence tests in deployment).
-
-LinkedIn reports **99.98% of variant evaluations are local** (no network call), making the latency budget essentially free. **35 trillion evaluations per day** are served with **200 GB total of member attribute data** (vs 26–390 TB/day for the cache-based RNG approach).
-
-#### 15.6.5 Mutual exclusion vs orthogonal layering — when each
-
-| Scenario | Choice |
-|---|---|
-| **Two experiments change the same UI element / metric path** | **Mutual exclusion** (same layer); orthogonal would create undefined behavior at the conflict point |
-| **One ranker experiment, one notification experiment** | **Orthogonal** (different layers); near-zero interaction expected |
-| **Two ranker experiments under development** | Mutual exclusion (same "ranker" layer) — only one ranker logic per user |
-| **A ramping experiment competing with stable launched winners** | Layered, with the winners moved to launch layers and the new experiment in a fresh ramping layer |
-| **A test of layout × ranker interaction** | A single factorial experiment in one layer — see §11 — rather than two orthogonal experiments |
-
-#### 15.6.6 Multi-experiment analysis — when interactions matter
-
-The orthogonality assumption is *in expectation*: any single user is in many experiments, and on average their effects don't interact. But interactions can be non-zero. Two responses:
-
-**(a) Detection.** Platforms run automated pairwise interaction tests across active experiments. LinkedIn's published note: pairwise interactions are detectable; three-way and higher are "extremely rare." Detection runs at platform scale; investigators are alerted only when a pairwise interaction exceeds a threshold.
-
-**(b) Joint analysis.** When you specifically want to estimate an interaction, fit a factorial-effect model across the relevant experiments:
-
-$$
-Y_{ij} = \alpha + \beta_A T_{Ai} + \beta_B T_{Bj} + \beta_{AB}(T_{Ai} \cdot T_{Bj}) + \epsilon_{ij}
-$$
-
-This requires the cell counts $T_A \times T_B$ to be balanced (LinkedIn's hash-based orthogonality gives this near-exactly) and enough power in each cell. The Netflix line of work extends this to anytime-valid factorial inference (§15.1).
-
-#### 15.6.7 Platform-side governance and safety
-
-A platform that runs 41,000 simultaneous experiments needs automated guardrails — humans can't review each. The infrastructure side:
-
-| Component | What it does |
-|---|---|
-| **SRM monitor** | Automated chi-squared test on assignment ratios at every experiment, every hour; alerts on $p < 10^{-6}$ |
-| **Auto-shutoff** | Hard-block on a configured guardrail metric breach (latency, error rate, revenue drop > $X$%) |
-| **Ramp protocol** | New experiments start at 0.5% → 5% → 25% → 50% — limits blast radius |
-| **Holdback management** | Long-lived 1–5% control population that doesn't get experimental treatments — enables long-term effect measurement |
-| **Experiment registry** | Central system-of-record: every active experiment, its owner, its layer, its expected end date, its guardrails |
-| **Metric repository** | Versioned metric definitions, so changing a metric definition doesn't silently change historical analyses |
-
-#### 15.6.8 Industry numbers (for calibration)
-
-| Company | Concurrent experiments | Member / unit base | Evaluations / day |
-|---|---|---|---|
-| **LinkedIn (T-REX)** | ~41,000 | ~700M | ~35 trillion |
-| **Google** (Tang et al. 2010, original) | Hundreds simultaneously | Web search traffic | Not disclosed at exact volume |
-| **Microsoft (ExP)** | ~10–20K | Bing + Office | Trillions |
-| **Booking.com** | 1,000+ | ~250M monthly users | Tens of billions |
-| **Netflix (XP)** | ~hundreds | ~250M members | ~hundreds of billions |
-| **Airbnb** | ~1,000+ | ~150M monthly users | ~tens of billions |
-
-These numbers are the floor for "platform-scale" — if a candidate says "we'd run a few experiments simultaneously" for a LinkedIn-scale problem, that's a junior-level frame.
-
-#### 15.6.9 Staff phrasing
-
-> *"At platform scale you don't run one experiment, you run tens of thousands. The dominant industry architecture is Tang-Agarwal's domain → layer → experiment hierarchy from KDD 2010: mutual exclusion within a layer, orthogonal across layers, with hash-based assignment so the serving path is stateless and sub-millisecond. LinkedIn's T-REX runs 41K concurrent experiments with 99.98% of assignments evaluated locally — no cache hit on the hot path. The platform side then needs automated SRM, auto-shutoff on guardrail breach, ramp protocols, a holdback population for long-term effects, and a centralized metric repository. Multi-experiment analysis closes the loop: pairwise interaction detection at platform scale, with joint factorial analysis when you specifically want to estimate an interaction. The interview test is whether you reach for layered orthogonality vs naive mutual-exclusion as the default."*
-
-#### 15.6.10 Further reading
-
-- [Overlapping Experiment Infrastructure: More, Better, Faster Experimentation (Tang, Agarwal, O'Brien, Meyer — Google KDD 2010)](https://research.google/pubs/overlapping-experiment-infrastructure-more-better-faster-experimentation/) — the foundational layered-overlapping paper.
-- [Assign Experiment Variants at Scale in Online Controlled Experiments (Xu, Chen, Mao et al. — LinkedIn, 2022)](https://arxiv.org/abs/2212.08771) — hash-based assignment with the MD5+salt formula and the 35T/day scale.
-- [A/B testing at LinkedIn: Assigning variants at scale (LinkedIn Engineering blog)](https://www.linkedin.com/blog/engineering/ab-testing-experimentation/a-b-testing-variant-assignment) — the operational walkthrough of T-REX.
-- [Our evolution towards T-REX: The prehistory of experimentation infrastructure at LinkedIn](https://www.linkedin.com/blog/engineering/ab-testing-experimentation/our-evolution-towards-t-rex-the-prehistory-of-experimentation-i) — LinkedIn's architecture history.
-- [Engineering for a Science-Centric Experimentation Platform (Diamantopoulos et al. — Netflix XP, 2019)](https://arxiv.org/abs/1910.03878) — Netflix's XP design philosophy.
-- [It's All A/Bout Testing: The Netflix Experimentation Platform (Netflix Tech Blog)](https://netflixtechblog.com/its-all-a-bout-testing-the-netflix-experimentation-platform-4e1ca458c15) — the XP overview.
-- [Testing for arbitrary interference on experimentation platforms (Saint-Jacques et al. — LinkedIn, 2017)](https://arxiv.org/abs/1704.01190) — platform-side interaction detection.
-
-> **Case-walkthrough companion.** See [`examples/experimentation-platform-design.md`](case-walkthroughs/experimentation-platform-design.md) for the step-by-step walkthrough of *"Design an experimentation platform for LinkedIn"* using this material — the 6-step framework for the interview answer.
+> 📎 **Deep dive:** [architectures, the assignment formula, mutual-exclusion-vs-layering, and governance](deep-dives/multi-experiment-platforms.md).
 
 ### 15.7 Further reading — Netflix references
 
