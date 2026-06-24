@@ -14,5 +14,5 @@ Detailed expansions of sections in [`../ab-testing-playbook.md`](../ab-testing-p
 ## Adding a new deep dive
 
 1. Create `deep-dives/<topic>.md`. Open with a blockquote linking back to the playbook section; close with a back-link footer.
-2. In `ab-testing-playbook.md`, drop a one-line `> 📎 Deep dive: [title](deep-dives/<topic>.md) — one-line hook.` under the relevant prose. Don't rewrite the original text.
+2. In `ab-testing-playbook.md`, drop a one-line `> 📎 **Deep dive:** [title](deep-dives/<topic>.md) — one-line hook.` under the relevant prose. Don't rewrite the original text.
 3. Add a row to the table above.
